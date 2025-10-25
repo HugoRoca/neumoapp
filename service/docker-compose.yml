@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14.4
+    container_name: neumoapp_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: neumoapp_db
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - neumoapp_network
+
+  # Opcional: Descomentar para ejecutar la API en Docker
+  # api:
+  #   build: .
+  #   container_name: neumoapp_api
+  #   restart: always
+  #   environment:
+  #     DATABASE_URL: postgresql://root:root@postgres:5432/neumoapp_db
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - neumoapp_network
+  #   volumes:
+  #     - .:/app
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  neumoapp_network:
+    driver: bridge
+

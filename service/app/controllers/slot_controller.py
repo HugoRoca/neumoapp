@@ -1,0 +1,45 @@
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+from datetime import date
+
+from app.database.base import get_db
+from app.schemas.appointment import AvailableSlotsResponse
+from app.services.slot_service import SlotService
+from app.core.dependencies import get_current_patient
+from app.models.patient import Patient
+
+router = APIRouter(prefix="/slots", tags=["Available Slots"])
+
+
+@router.get("/available", response_model=AvailableSlotsResponse)
+async def get_available_slots(
+    specialty_id: int = Query(..., description="Specialty ID"),
+    date: date = Query(..., description="Date to check availability (YYYY-MM-DD)"),
+    shift: str = Query(..., description="Shift: morning or afternoon"),
+    db: Session = Depends(get_db),
+    current_patient: Patient = Depends(get_current_patient)
+):
+    """
+    Get available time slots for booking appointments
+    
+    **Parameters:**
+    - **specialty_id**: Medical specialty ID
+    - **date**: Date for the appointment (format: YYYY-MM-DD)
+    - **shift**: Shift type (morning: 8AM-1PM, afternoon: 2PM-6PM)
+    
+    **Returns:**
+    - List of available slots (20-minute intervals)
+    - Each slot shows start_time, end_time, and consultation_room
+    - Only weekdays (Monday-Friday)
+    - Only future times if date is today
+    - Automatically excludes reserved slots
+    
+    **Schedule:**
+    - Morning: 8:00 AM - 1:00 PM
+    - Afternoon: 2:00 PM - 6:00 PM
+    - Duration: 20 minutes per appointment
+    - Working days: Monday to Friday only
+    """
+    service = SlotService(db)
+    return service.get_available_slots(specialty_id, date, shift)
+
