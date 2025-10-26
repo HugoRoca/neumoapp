@@ -4,6 +4,46 @@
 
 REST API developed with FastAPI for medical appointment management, allowing patients to schedule, consult and manage their appointments with different medical specialties.
 
+## 📑 Table of Contents
+
+- [Quick Start](#-quick-start)
+- [Architecture](#-architecture)
+- [Features](#-features)
+- [Prerequisites](#-prerequisites)
+- [Installation](#-installation)
+- [API Documentation](#-api-documentation)
+- [API Endpoints](#-api-endpoints)
+- [Usage Examples](#-usage-examples)
+- [Database Model](#-database-model)
+- [Test Patients](#-test-patients)
+- [Technologies Used](#-technologies-used)
+
+## ⚡ Quick Start
+
+```bash
+# 1. Start PostgreSQL
+docker-compose up -d
+
+# 2. Create virtual environment and install dependencies
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# 3. Create database schema
+psql -U root -d neumoapp_db -f database_schema.sql
+
+# 4. Insert sample data (optional)
+psql -U root -d neumoapp_db -f insert_sample_data.sql
+
+# 5. Run the API
+python main.py
+
+# 6. Access Swagger UI
+open http://localhost:3000/docs
+```
+
+**Test credentials:** DNI: `12345678` | Password: `password123`
+
 ## 🏗️ Architecture
 
 This project follows **Clean Architecture** principles with separation into layers:
@@ -118,6 +158,19 @@ Once the application is running, you can access interactive documentation:
 - **Swagger UI**: http://localhost:3000/docs
 - **ReDoc**: http://localhost:3000/redoc
 
+### Endpoint Summary
+
+The API provides **23 endpoints** across 6 main categories:
+
+| Category | Endpoints | Description |
+|----------|-----------|-------------|
+| 🔐 Authentication | 3 | Register, login, profile |
+| 👥 Patients | 2 | List and view patients |
+| 🏥 Specialties | 3 | Manage medical specialties |
+| 🏢 Consultation Rooms | 8 | Manage consultation rooms and assignments |
+| ⏰ Available Slots | 1 | Query available appointment slots |
+| 📅 Appointments | 6 | Book, view, update, and cancel appointments |
+
 ## 🗂️ Project Structure
 
 ```
@@ -174,57 +227,77 @@ The API uses JWT (JSON Web Tokens) for authentication. All endpoints (except `/a
 2. **Login**: `POST /auth/login` - Returns a JWT token
 3. **Use the token**: Include in header `Authorization: Bearer <token>` in all requests
 
-## 📍 Main Endpoints
+## 📍 API Endpoints
 
-### Authentication
+### 🔐 Authentication (`/auth`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `POST` | `/auth/register` | Register new patient | ❌ No |
+| `POST` | `/auth/login` | Login and get JWT token | ❌ No |
+| `GET` | `/auth/me` | Get authenticated patient profile | ✅ Yes |
 
-- `POST /auth/register` - Register new patient
-- `POST /auth/login` - Login
-- `GET /auth/me` - Get authenticated patient profile
+### 👥 Patients (`/patients`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `GET` | `/patients/` | List all patients | ✅ Yes |
+| `GET` | `/patients/{patient_id}` | Get patient by ID | ✅ Yes |
 
-### Specialties
+### 🏥 Specialties (`/specialties`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `GET` | `/specialties/` | List all specialties | ✅ Yes |
+| `GET` | `/specialties/{specialty_id}` | Get specialty by ID | ✅ Yes |
+| `POST` | `/specialties/` | Create new specialty | ✅ Yes (Admin) |
 
-- `GET /specialties/` - List all specialties
-- `GET /specialties/{id}` - Get a specialty
-- `POST /specialties/` - Create specialty (admin)
+### 🏢 Consultation Rooms (`/consultation-rooms`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `GET` | `/consultation-rooms/` | List all consultation rooms | ✅ Yes |
+| `GET` | `/consultation-rooms/by-specialty/{specialty_id}` | Get rooms by specialty | ✅ Yes |
+| `GET` | `/consultation-rooms/{room_id}` | Get room details with specialties | ✅ Yes |
+| `POST` | `/consultation-rooms/` | Create new consultation room | ✅ Yes (Admin) |
+| `PATCH` | `/consultation-rooms/{room_id}` | Update consultation room | ✅ Yes (Admin) |
+| `POST` | `/consultation-rooms/{room_id}/assign-specialty` | Assign specialty to room | ✅ Yes (Admin) |
+| `DELETE` | `/consultation-rooms/{room_id}/remove-specialty` | Remove specialty from room | ✅ Yes (Admin) |
+| `DELETE` | `/consultation-rooms/{room_id}` | Deactivate consultation room | ✅ Yes (Admin) |
 
-### Consultation Rooms
+### ⏰ Available Slots (`/slots`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `GET` | `/slots/available` | Get available time slots | ✅ Yes |
 
-- `GET /consultation-rooms/` - List all consultation rooms
-- `GET /consultation-rooms/by-specialty/{id}` - Get rooms for a specialty
-- `GET /consultation-rooms/{id}` - Get room details
-- `POST /consultation-rooms/` - Create consultation room (admin)
+**Query Parameters:**
+- `specialty_id` (required) - ID of the specialty
+- `date` (required) - Date in format YYYY-MM-DD
+- `shift` (required) - morning or afternoon
 
-### Available Slots
-
-- `GET /slots/available` - Get available time slots
-  - Parameters: `specialty_id`, `date`, `shift` (required)
-
-### Appointments
-
-- `POST /appointments/` - Book an appointment
-- `GET /appointments/my-appointments` - View my appointments (Dashboard)
-- `GET /appointments/{id}` - View appointment details
-- `PATCH /appointments/{id}` - Update appointment status/observations
-- `DELETE /appointments/{id}` - Cancel an appointment
+### 📅 Appointments (`/appointments`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `POST` | `/appointments/` | Book a new appointment | ✅ Yes |
+| `GET` | `/appointments/my-appointments` | Get my appointments (Dashboard) | ✅ Yes |
+| `GET` | `/appointments/upcoming` | Get all upcoming appointments | ✅ Yes |
+| `GET` | `/appointments/{appointment_id}` | Get appointment details | ✅ Yes |
+| `PATCH` | `/appointments/{appointment_id}` | Update appointment | ✅ Yes |
+| `DELETE` | `/appointments/{appointment_id}` | Cancel appointment | ✅ Yes |
 
 ## 📝 Usage Examples
 
 ### 1. Register a patient
 
 ```bash
-curl -X POST "http://localhost:8000/auth/register" \
+curl -X POST "http://localhost:3000/auth/register" \
   -H "Content-Type: application/json" \
   -d '{
     "document_number": "12345678",
     "lastname": "Pérez",
     "firstname": "Juan",
     "date_birth": "1985-05-15",
-    "gender": "Male",
-    "address": "Av. Example 123",
+    "gender": "Masculino",
+    "address": "Av. Los Álamos 123, Lima",
     "phone": "987654321",
-    "email": "juan@example.com",
-    "civil_status": "Married",
+    "email": "juan.perez@email.com",
+    "civil_status": "Casado",
     "password": "password123"
   }'
 ```
@@ -232,7 +305,7 @@ curl -X POST "http://localhost:8000/auth/register" \
 ### 2. Login
 
 ```bash
-curl -X POST "http://localhost:8000/auth/login" \
+curl -X POST "http://localhost:3000/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
     "document_number": "12345678",
@@ -248,21 +321,72 @@ Response:
 }
 ```
 
-### 3. List specialties
+### 3. Get my profile
 
 ```bash
-curl -X GET "http://localhost:8000/specialties/" \
+curl -X GET "http://localhost:3000/auth/me" \
   -H "Authorization: Bearer <your-token>"
 ```
 
-### 4. Query available slots
+### 4. List specialties
+
+```bash
+curl -X GET "http://localhost:3000/specialties/" \
+  -H "Authorization: Bearer <your-token>"
+```
+
+### 5. List consultation rooms by specialty
+
+```bash
+curl -X GET "http://localhost:3000/consultation-rooms/by-specialty/1" \
+  -H "Authorization: Bearer <your-token>"
+```
+
+Response:
+```json
+[
+  {
+    "id": 1,
+    "room_number": "GRAL-101",
+    "name": "Consultorio Medicina General 1",
+    "floor": "1",
+    "building": "Edificio A",
+    "description": "Equipado para consultas generales",
+    "active": true
+  }
+]
+```
+
+### 6. Query available time slots
 
 ```bash
 curl -X GET "http://localhost:3000/slots/available?specialty_id=1&date=2024-10-30&shift=morning" \
   -H "Authorization: Bearer <your-token>"
 ```
 
-### 5. Book an appointment
+Response:
+```json
+{
+  "specialty_id": 1,
+  "specialty_name": "Medicina General",
+  "date": "2024-10-30",
+  "shift": "morning",
+  "slots": [
+    {
+      "start_time": "08:00:00",
+      "end_time": "08:20:00",
+      "consultation_room": {
+        "id": 1,
+        "room_number": "GRAL-101",
+        "name": "Consultorio Medicina General 1"
+      },
+      "available": true
+    }
+  ]
+}
+```
+
+### 7. Book an appointment
 
 ```bash
 curl -X POST "http://localhost:3000/appointments/" \
@@ -274,22 +398,83 @@ curl -X POST "http://localhost:3000/appointments/" \
     "appointment_date": "2024-10-30",
     "start_time": "08:00:00",
     "shift": "morning",
-    "reason": "Routine checkup"
+    "reason": "Chequeo médico general"
   }'
 ```
 
-### 6. View my appointments (Dashboard)
+### 8. View my appointments (Dashboard)
 
 ```bash
 curl -X GET "http://localhost:3000/appointments/my-appointments" \
   -H "Authorization: Bearer <your-token>"
 ```
 
-### 7. Cancel an appointment
+Response:
+```json
+[
+  {
+    "id": 1,
+    "patient_id": 1,
+    "specialty_id": 1,
+    "specialty_name": "Medicina General",
+    "consultation_room_id": 1,
+    "consultation_room_number": "GRAL-101",
+    "consultation_room_name": "Consultorio Medicina General 1",
+    "appointment_date": "2024-10-30",
+    "start_time": "08:00:00",
+    "end_time": "08:20:00",
+    "shift": "morning",
+    "status": "confirmed",
+    "reason": "Chequeo médico general"
+  }
+]
+```
+
+### 9. Update appointment
+
+```bash
+curl -X PATCH "http://localhost:3000/appointments/1" \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "completed",
+    "observations": "Paciente en buen estado. Control en 6 meses."
+  }'
+```
+
+### 10. Cancel an appointment
 
 ```bash
 curl -X DELETE "http://localhost:3000/appointments/1" \
   -H "Authorization: Bearer <your-token>"
+```
+
+### 11. Create a new specialty (Admin)
+
+```bash
+curl -X POST "http://localhost:3000/specialties/" \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Endocrinología",
+    "description": "Especialista en sistema endocrino y hormonas"
+  }'
+```
+
+### 12. Create a consultation room (Admin)
+
+```bash
+curl -X POST "http://localhost:3000/consultation-rooms/" \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "room_number": "ENDO-801",
+    "name": "Consultorio Endocrinología",
+    "floor": "8",
+    "building": "Edificio A",
+    "description": "Equipado para consultas endocrinológicas",
+    "specialty_ids": [11]
+  }'
 ```
 
 ## 🗄️ Database Model
