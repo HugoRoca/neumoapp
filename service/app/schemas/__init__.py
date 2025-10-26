@@ -1,5 +1,6 @@
 from app.schemas.patient import PatientCreate, PatientLogin, PatientResponse, Token
 from app.schemas.specialty import SpecialtyResponse, SpecialtyCreate
+from app.schemas.hospital import HospitalResponse, HospitalCreate, HospitalUpdate, HospitalWithStats
 from app.schemas.consultation_room import (
     ConsultationRoomCreate,
     ConsultationRoomUpdate,
@@ -23,6 +24,10 @@ __all__ = [
     "Token",
     "SpecialtyResponse",
     "SpecialtyCreate",
+    "HospitalResponse",
+    "HospitalCreate",
+    "HospitalUpdate",
+    "HospitalWithStats",
     "ConsultationRoomCreate",
     "ConsultationRoomUpdate",
     "ConsultationRoomResponse",

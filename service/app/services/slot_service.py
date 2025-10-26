@@ -73,15 +73,16 @@ class SlotService:
     
     def get_available_slots(
         self, 
+        hospital_id: int,
         specialty_id: int, 
         check_date: date, 
         shift: str
     ) -> AvailableSlotsResponse:
         """
-        Obtiene slots disponibles para una especialidad, fecha y turno específicos.
+        Obtiene slots disponibles para un hospital, especialidad, fecha y turno específicos.
         
         - Genera slots dinámicamente según el turno
-        - Considera múltiples consultorios
+        - Considera múltiples consultorios del hospital
         - Filtra slots ya reservados
         - Solo días laborales (lunes a viernes)
         - Solo slots futuros si es hoy
@@ -134,13 +135,14 @@ class SlotService:
             current_time = datetime.now().time()
             time_slots = [t for t in time_slots if t > current_time]
         
-        # Obtener consultorios asignados a esta especialidad
-        consultation_rooms = self.room_repo.get_by_specialty(specialty_id)
+        # Obtener consultorios asignados a esta especialidad en este hospital
+        all_rooms = self.room_repo.get_by_specialty(specialty_id)
+        consultation_rooms = [room for room in all_rooms if room.hospital_id == hospital_id and room.active]
         
         if not consultation_rooms:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No consultation rooms assigned to this specialty"
+                detail="No consultation rooms assigned to this specialty in the selected hospital"
             )
         
         # Obtener slots ocupados

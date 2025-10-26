@@ -13,6 +13,7 @@ router = APIRouter(prefix="/slots", tags=["Available Slots"])
 
 @router.get("/available", response_model=AvailableSlotsResponse)
 async def get_available_slots(
+    hospital_id: int = Query(..., description="Hospital ID"),
     specialty_id: int = Query(..., description="Specialty ID"),
     date: date = Query(..., description="Date to check availability (YYYY-MM-DD)"),
     shift: str = Query(..., description="Shift: morning or afternoon"),
@@ -23,6 +24,7 @@ async def get_available_slots(
     Get available time slots for booking appointments
     
     **Parameters:**
+    - **hospital_id**: Hospital ID where the appointment will take place
     - **specialty_id**: Medical specialty ID
     - **date**: Date for the appointment (format: YYYY-MM-DD)
     - **shift**: Shift type (morning: 8AM-1PM, afternoon: 2PM-6PM)
@@ -41,5 +43,5 @@ async def get_available_slots(
     - Working days: Monday to Friday only
     """
     service = SlotService(db)
-    return service.get_available_slots(specialty_id, date, shift)
+    return service.get_available_slots(hospital_id, specialty_id, date, shift)
 

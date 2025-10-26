@@ -8,6 +8,7 @@ from app.controllers import (
     auth_router,
     patient_router,
     specialty_router,
+    hospital_router,
     consultation_room_router,
     slot_router,
     appointment_router
@@ -38,6 +39,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(patient_router)
 app.include_router(specialty_router)
+app.include_router(hospital_router)
 app.include_router(consultation_room_router)
 app.include_router(slot_router)
 app.include_router(appointment_router)

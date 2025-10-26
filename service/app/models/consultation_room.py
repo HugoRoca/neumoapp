@@ -18,6 +18,7 @@ class ConsultationRoom(Base):
     __tablename__ = "consultation_rooms"
 
     id = Column(Integer, primary_key=True, index=True)
+    hospital_id = Column(Integer, ForeignKey('hospitals.id', ondelete='RESTRICT'), nullable=False, index=True)
     room_number = Column(String(20), unique=True, nullable=False)  # Ej: "101", "A-1", "CARD-1"
     name = Column(String(100), nullable=False)  # Ej: "Consultorio Cardiología 1"
     floor = Column(String(20), nullable=True)  # Ej: "1", "2", "PB"
@@ -27,6 +28,9 @@ class ConsultationRoom(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relación con hospital
+    hospital = relationship("Hospital", back_populates="consultation_rooms")
+    
     # Relación muchos a muchos con especialidades
     specialties = relationship(
         "Specialty",

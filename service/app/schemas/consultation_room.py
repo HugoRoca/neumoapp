@@ -4,6 +4,7 @@ from datetime import datetime
 
 
 class ConsultationRoomBase(BaseModel):
+    hospital_id: int = Field(..., description="Hospital ID where this room is located")
     room_number: str = Field(..., min_length=1, max_length=20, description="Room number or code (e.g., '101', 'A-1')")
     name: str = Field(..., min_length=3, max_length=100, description="Room name")
     floor: Optional[str] = Field(None, max_length=20, description="Floor number or level")
