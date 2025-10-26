@@ -11,3 +11,8 @@ python init_db.py
 
 # 4. Ejecutar la API
 uvicorn main:app --reloads
+
+
+
+for delete db from docker and recreate:
+cd /Users/hugoroca/repositories/neumoapp/service && docker exec -i neumoapp_postgres psql -U root -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'neumoapp_db' AND pid <> pg_backend_pid();" && docker exec -i neumoapp_postgres psql -U root -d postgres -c "DROP DATABASE IF EXISTS neumoapp_db;" && docker exec -i neumoapp_postgres psql -U root -d postgres -c "CREATE DATABASE neumoapp_db;" && docker exec -i neumoapp_postgres psql -U root -d neumoapp_db < scripts/database_schema.sql

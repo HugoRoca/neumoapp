@@ -16,8 +16,11 @@ async def register(patient: PatientCreate, db: Session = Depends(get_db)):
     Register a new patient in the system
     
     - **document_number**: Unique identification document
-    - **lastname**: Patient's last name
-    - **firstname**: Patient's first name
+    - **last_name**: Patient's last name
+    - **first_name**: Patient's first name
+    - **birth_date**: Date of birth (YYYY-MM-DD)
+    - **gender**: M (Male) or F (Female)
+    - **email**: Email address (required)
     - **password**: Password (min 6 characters)
     """
     service = AuthService(db)

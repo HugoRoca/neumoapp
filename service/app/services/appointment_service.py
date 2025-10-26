@@ -9,6 +9,7 @@ from app.schemas.appointment import AppointmentCreate, AppointmentUpdate
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.specialty_repository import SpecialtyRepository
 from app.repositories.consultation_room_repository import ConsultationRoomRepository
+from app.repositories.hospital_repository import HospitalRepository
 from app.services.slot_service import SlotService
 
 
@@ -20,6 +21,7 @@ class AppointmentService:
         self.appointment_repo = AppointmentRepository(db)
         self.specialty_repo = SpecialtyRepository(db)
         self.room_repo = ConsultationRoomRepository(db)
+        self.hospital_repo = HospitalRepository(db)
         self.slot_service = SlotService(db)
     
     def book_appointment(
@@ -38,7 +40,7 @@ class AppointmentService:
             )
         
         # Validate consultation room exists and is assigned to specialty
-        consultation_room = self.room_repo.get_by_id(appointment_data.consultation_room_id)
+        consultation_room = self.room_repo.get_by_id_with_specialties(appointment_data.consultation_room_id)
         if not consultation_room or not consultation_room.active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -50,6 +52,14 @@ class AppointmentService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This consultation room is not assigned to the selected specialty"
+            )
+        
+        # Verify hospital offers this specialty
+        hospital = consultation_room.hospital
+        if not self.hospital_repo.has_specialty(hospital.id, specialty.id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Hospital '{hospital.name}' does not offer the specialty '{specialty.name}'"
             )
         
         # Validate slot availability

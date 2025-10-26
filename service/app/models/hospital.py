@@ -1,10 +1,21 @@
 """
 Hospital Model
 """
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Table, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.base import Base
+
+
+# Tabla de asociación: hospitales <-> especialidades (muchos a muchos)
+hospital_specialties = Table(
+    'hospital_specialties',
+    Base.metadata,
+    Column('hospital_id', Integer, ForeignKey('hospitals.id', ondelete='CASCADE'), primary_key=True),
+    Column('specialty_id', Integer, ForeignKey('specialties.id', ondelete='CASCADE'), primary_key=True),
+    Column('active', Boolean, default=True),
+    Column('created_at', DateTime(timezone=True), server_default=func.now())
+)
 
 
 class Hospital(Base):
@@ -26,6 +37,13 @@ class Hospital(Base):
     
     # Relationships
     consultation_rooms = relationship("ConsultationRoom", back_populates="hospital")
+    
+    # Relación muchos a muchos con especialidades
+    specialties = relationship(
+        "Specialty",
+        secondary=hospital_specialties,
+        back_populates="hospitals"
+    )
     
     def __repr__(self):
         return f"<Hospital(id={self.id}, name='{self.name}', code='{self.code}')>"

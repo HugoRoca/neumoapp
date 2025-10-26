@@ -1,15 +1,28 @@
 -- =====================================================
 -- ESQUEMA COMPLETO - Sistema de Citas Médicas
 -- =====================================================
--- Versión: 3.0 - Octubre 2024
--- Descripción: Sistema completo con consultorios (M:N), 
---              horarios dinámicos, y arquitectura limpia
+-- Versión: 4.0 - Octubre 2024
+-- Descripción: Sistema completo con:
+--   - Hospitales → Especialidades → Consultorios
+--   - Relación M:N entre hospitales y especialidades
+--   - Consultorios pertenecen a hospitales
+--   - Horarios dinámicos, arquitectura limpia
 -- =====================================================
 
--- Eliminar tablas si existen (para reinstalación limpia)
+-- Eliminar objetos si existen (para reinstalación limpia)
+DROP VIEW IF EXISTS v_upcoming_appointments CASCADE;
+DROP VIEW IF EXISTS v_room_usage_stats CASCADE;
+DROP VIEW IF EXISTS v_consultation_rooms_with_info CASCADE;
+DROP VIEW IF EXISTS v_hospital_specialties CASCADE;
+DROP VIEW IF EXISTS v_hospitals_with_stats CASCADE;
+DROP VIEW IF EXISTS v_specialties_with_rooms CASCADE;
+DROP VIEW IF EXISTS v_consultation_rooms_with_specialties CASCADE;
+
 DROP TABLE IF EXISTS appointments CASCADE;
 DROP TABLE IF EXISTS specialty_consultation_rooms CASCADE;
+DROP TABLE IF EXISTS hospital_specialties CASCADE;
 DROP TABLE IF EXISTS consultation_rooms CASCADE;
+DROP TABLE IF EXISTS hospitals CASCADE;
 DROP TABLE IF EXISTS specialties CASCADE;
 DROP TABLE IF EXISTS patients CASCADE;
 
@@ -19,14 +32,13 @@ DROP TABLE IF EXISTS patients CASCADE;
 CREATE TABLE patients (
     id SERIAL PRIMARY KEY,
     document_number VARCHAR(20) UNIQUE NOT NULL,
-    lastname VARCHAR(100) NOT NULL,
-    firstname VARCHAR(100) NOT NULL,
-    date_birth DATE NOT NULL,
-    gender VARCHAR(20) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    birth_date DATE NOT NULL,
+    gender VARCHAR(1) CHECK (gender IN ('M', 'F')) NOT NULL,
     address TEXT,
     phone VARCHAR(20),
-    email VARCHAR(100) UNIQUE,
-    civil_status VARCHAR(20),
+    email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -61,10 +73,55 @@ COMMENT ON TABLE specialties IS 'Especialidades médicas disponibles';
 
 
 -- =====================================================
+-- TABLA: hospitals (hospitales)
+-- =====================================================
+CREATE TABLE hospitals (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    code VARCHAR(20) UNIQUE NOT NULL,
+    address TEXT NOT NULL,
+    district VARCHAR(100),
+    city VARCHAR(100) DEFAULT 'Lima',
+    phone VARCHAR(20),
+    email VARCHAR(100),
+    description TEXT,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_hospitals_code ON hospitals(code);
+CREATE INDEX idx_hospitals_active ON hospitals(active);
+CREATE INDEX idx_hospitals_city ON hospitals(city);
+
+COMMENT ON TABLE hospitals IS 'Hospitales/clínicas donde se brindan servicios';
+COMMENT ON COLUMN hospitals.code IS 'Código único del hospital (ej: HNR, HAL)';
+
+
+-- =====================================================
+-- TABLA: hospital_specialties (relación M:N)
+-- =====================================================
+CREATE TABLE hospital_specialties (
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+    specialty_id INTEGER NOT NULL REFERENCES specialties(id) ON DELETE CASCADE,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (hospital_id, specialty_id)
+);
+
+CREATE INDEX idx_hospital_specialties_hospital ON hospital_specialties(hospital_id);
+CREATE INDEX idx_hospital_specialties_specialty ON hospital_specialties(specialty_id);
+
+COMMENT ON TABLE hospital_specialties IS 'Relación M:N entre hospitales y especialidades';
+COMMENT ON COLUMN hospital_specialties.active IS 'Permite desactivar temporalmente una especialidad en un hospital';
+
+
+-- =====================================================
 -- TABLA: consultation_rooms (consultorios)
 -- =====================================================
 CREATE TABLE consultation_rooms (
     id SERIAL PRIMARY KEY,
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE RESTRICT,
     room_number VARCHAR(20) UNIQUE NOT NULL,
     name VARCHAR(100) NOT NULL,
     floor VARCHAR(20),
@@ -75,11 +132,13 @@ CREATE TABLE consultation_rooms (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX idx_consultation_rooms_hospital ON consultation_rooms(hospital_id);
 CREATE INDEX idx_consultation_rooms_room_number ON consultation_rooms(room_number);
 CREATE INDEX idx_consultation_rooms_active ON consultation_rooms(active);
 
-COMMENT ON TABLE consultation_rooms IS 'Consultorios/salas de atención';
-COMMENT ON COLUMN consultation_rooms.room_number IS 'Código único del consultorio (ej: CARD-201)';
+COMMENT ON TABLE consultation_rooms IS 'Consultorios/salas de atención en hospitales';
+COMMENT ON COLUMN consultation_rooms.hospital_id IS 'Hospital al que pertenece el consultorio';
+COMMENT ON COLUMN consultation_rooms.room_number IS 'Código único del consultorio (ej: R-CARD-201)';
 
 
 -- =====================================================
@@ -198,28 +257,66 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION is_weekday IS 'Verifica si una fecha es día laboral (lunes-viernes)';
 
 
--- Función: Obtener consultorios de una especialidad
-CREATE OR REPLACE FUNCTION get_specialty_rooms(p_specialty_id INTEGER)
-RETURNS TABLE(
+-- Función: Obtener especialidades de un hospital
+CREATE OR REPLACE FUNCTION get_hospital_specialties(p_hospital_id INTEGER)
+RETURNS TABLE (
+    specialty_id INTEGER,
+    specialty_name VARCHAR,
+    specialty_description TEXT,
+    available_rooms INTEGER
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        s.id,
+        s.name,
+        s.description,
+        COUNT(DISTINCT scr.consultation_room_id)::INTEGER
+    FROM specialties s
+    JOIN hospital_specialties hs ON s.id = hs.specialty_id
+    LEFT JOIN consultation_rooms cr ON cr.hospital_id = hs.hospital_id AND cr.active = true
+    LEFT JOIN specialty_consultation_rooms scr ON s.id = scr.specialty_id AND cr.id = scr.consultation_room_id
+    WHERE hs.hospital_id = p_hospital_id 
+      AND hs.active = true 
+      AND s.active = true
+    GROUP BY s.id, s.name, s.description
+    ORDER BY s.name;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION get_hospital_specialties IS 'Retorna las especialidades ofrecidas por un hospital';
+
+
+-- Función: Obtener consultorios disponibles para especialidad en hospital
+CREATE OR REPLACE FUNCTION get_available_rooms_for_specialty(
+    p_hospital_id INTEGER,
+    p_specialty_id INTEGER
+)
+RETURNS TABLE (
     room_id INTEGER,
-    room_number VARCHAR(20),
-    room_name VARCHAR(100)
+    room_number VARCHAR,
+    room_name VARCHAR,
+    floor VARCHAR,
+    building VARCHAR
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         cr.id,
         cr.room_number,
-        cr.name
+        cr.name,
+        cr.floor,
+        cr.building
     FROM consultation_rooms cr
     JOIN specialty_consultation_rooms scr ON cr.id = scr.consultation_room_id
-    WHERE scr.specialty_id = p_specialty_id
-    AND cr.active = true
+    WHERE cr.hospital_id = p_hospital_id
+      AND scr.specialty_id = p_specialty_id
+      AND cr.active = true
     ORDER BY cr.room_number;
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION get_specialty_rooms IS 'Retorna los consultorios asignados a una especialidad';
+COMMENT ON FUNCTION get_available_rooms_for_specialty IS 'Retorna consultorios disponibles para una especialidad en un hospital';
 
 
 -- =====================================================
@@ -232,6 +329,10 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_specialties_updated_at 
 BEFORE UPDATE ON specialties 
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_hospitals_updated_at 
+BEFORE UPDATE ON hospitals 
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_consultation_rooms_updated_at 
@@ -247,209 +348,160 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 -- VISTAS
 -- =====================================================
 
--- Vista: Consultorios con sus especialidades
-CREATE OR REPLACE VIEW v_consultation_rooms_with_specialties AS
+-- Vista: Hospitales con estadísticas
+CREATE VIEW v_hospitals_with_stats AS
+SELECT 
+    h.id,
+    h.name,
+    h.code,
+    h.address,
+    h.district,
+    h.city,
+    h.phone,
+    h.email,
+    h.active,
+    h.created_at,
+    COUNT(DISTINCT hs.specialty_id) as specialty_count,
+    COUNT(DISTINCT cr.id) as room_count,
+    COUNT(DISTINCT CASE WHEN a.appointment_date >= CURRENT_DATE THEN a.id END) as upcoming_appointments,
+    STRING_AGG(DISTINCT s.name, ', ' ORDER BY s.name) as specialties
+FROM hospitals h
+LEFT JOIN hospital_specialties hs ON h.id = hs.hospital_id AND hs.active = true
+LEFT JOIN specialties s ON hs.specialty_id = s.id AND s.active = true
+LEFT JOIN consultation_rooms cr ON h.id = cr.hospital_id AND cr.active = true
+LEFT JOIN appointments a ON cr.id = a.consultation_room_id
+WHERE h.active = true
+GROUP BY h.id, h.name, h.code, h.address, h.district, h.city, h.phone, h.email, h.active, h.created_at;
+
+COMMENT ON VIEW v_hospitals_with_stats IS 'Hospitales con estadísticas agregadas';
+
+
+-- Vista: Especialidades por hospital
+CREATE VIEW v_hospital_specialties AS
+SELECT 
+    h.id as hospital_id,
+    h.name as hospital_name,
+    h.code as hospital_code,
+    s.id as specialty_id,
+    s.name as specialty_name,
+    s.description as specialty_description,
+    COUNT(DISTINCT scr.consultation_room_id) as available_rooms,
+    hs.active as assignment_active
+FROM hospitals h
+JOIN hospital_specialties hs ON h.id = hs.hospital_id
+JOIN specialties s ON hs.specialty_id = s.id
+LEFT JOIN consultation_rooms cr ON h.id = cr.hospital_id AND cr.active = true
+LEFT JOIN specialty_consultation_rooms scr ON s.id = scr.specialty_id AND cr.id = scr.consultation_room_id
+WHERE h.active = true AND s.active = true
+GROUP BY h.id, h.name, h.code, s.id, s.name, s.description, hs.active;
+
+COMMENT ON VIEW v_hospital_specialties IS 'Especialidades disponibles por hospital';
+
+
+-- Vista: Consultorios con información completa
+CREATE VIEW v_consultation_rooms_with_info AS
 SELECT 
     cr.id as room_id,
     cr.room_number,
     cr.name as room_name,
     cr.floor,
     cr.building,
-    cr.active,
-    STRING_AGG(s.name, ', ' ORDER BY s.name) as specialties,
-    COUNT(DISTINCT s.id) as specialty_count
+    cr.active as room_active,
+    h.id as hospital_id,
+    h.name as hospital_name,
+    h.code as hospital_code,
+    COUNT(DISTINCT scr.specialty_id) as specialty_count,
+    STRING_AGG(DISTINCT s.name, ', ' ORDER BY s.name) as specialties
 FROM consultation_rooms cr
+JOIN hospitals h ON cr.hospital_id = h.id
 LEFT JOIN specialty_consultation_rooms scr ON cr.id = scr.consultation_room_id
-LEFT JOIN specialties s ON scr.specialty_id = s.id
-GROUP BY cr.id, cr.room_number, cr.name, cr.floor, cr.building, cr.active;
+LEFT JOIN specialties s ON scr.specialty_id = s.id AND s.active = true
+WHERE cr.active = true AND h.active = true
+GROUP BY cr.id, cr.room_number, cr.name, cr.floor, cr.building, cr.active, 
+         h.id, h.name, h.code;
 
-COMMENT ON VIEW v_consultation_rooms_with_specialties IS 'Consultorios con lista de especialidades asignadas';
+COMMENT ON VIEW v_consultation_rooms_with_info IS 'Consultorios con hospital y especialidades';
 
 
--- Vista: Especialidades con sus consultorios
-CREATE OR REPLACE VIEW v_specialties_with_rooms AS
+-- Vista: Próximas citas con información completa
+CREATE VIEW v_upcoming_appointments AS
 SELECT 
-    s.id as specialty_id,
-    s.name as specialty_name,
-    STRING_AGG(cr.room_number, ', ' ORDER BY cr.room_number) as rooms,
-    COUNT(DISTINCT cr.id) as room_count
-FROM specialties s
-LEFT JOIN specialty_consultation_rooms scr ON s.id = scr.specialty_id
-LEFT JOIN consultation_rooms cr ON scr.consultation_room_id = cr.id
-WHERE s.active = true AND (cr.active = true OR cr.id IS NULL)
-GROUP BY s.id, s.name;
-
-COMMENT ON VIEW v_specialties_with_rooms IS 'Especialidades con lista de consultorios asignados';
-
-
--- Vista: Próximas citas (con info completa)
-CREATE OR REPLACE VIEW v_upcoming_appointments AS
-SELECT 
-    a.id,
-    a.patient_id,
-    p.document_number,
-    p.firstname || ' ' || p.lastname as patient_name,
-    a.specialty_id,
-    s.name as specialty_name,
-    a.consultation_room_id,
-    cr.room_number,
-    cr.name as room_name,
-    cr.floor,
-    cr.building,
+    a.id as appointment_id,
     a.appointment_date,
     a.start_time,
     a.end_time,
     a.shift,
     a.status,
-    a.reason
+    p.id as patient_id,
+    p.first_name || ' ' || p.last_name as patient_name,
+    p.document_number as patient_document,
+    s.id as specialty_id,
+    s.name as specialty_name,
+    cr.id as room_id,
+    cr.room_number,
+    cr.name as room_name,
+    h.id as hospital_id,
+    h.name as hospital_name,
+    h.code as hospital_code
 FROM appointments a
 JOIN patients p ON a.patient_id = p.id
 JOIN specialties s ON a.specialty_id = s.id
 JOIN consultation_rooms cr ON a.consultation_room_id = cr.id
+JOIN hospitals h ON cr.hospital_id = h.id
 WHERE a.appointment_date >= CURRENT_DATE
-AND a.status IN ('pending', 'confirmed')
 ORDER BY a.appointment_date, a.start_time;
 
-COMMENT ON VIEW v_upcoming_appointments IS 'Próximas citas con información completa';
+COMMENT ON VIEW v_upcoming_appointments IS 'Citas próximas con información completa';
 
 
 -- Vista: Estadísticas de uso de consultorios
-CREATE OR REPLACE VIEW v_room_usage_stats AS
+CREATE VIEW v_room_usage_stats AS
 SELECT 
+    cr.id as room_id,
     cr.room_number,
-    cr.name,
-    cr.floor,
-    cr.building,
-    COUNT(a.id) as total_appointments,
-    COUNT(CASE WHEN a.status = 'completed' THEN 1 END) as completed_appointments,
-    COUNT(CASE WHEN a.status = 'cancelled' THEN 1 END) as cancelled_appointments,
-    COUNT(CASE WHEN a.appointment_date >= CURRENT_DATE THEN 1 END) as upcoming_appointments
+    cr.name as room_name,
+    h.name as hospital_name,
+    COUNT(DISTINCT a.id) as total_appointments,
+    COUNT(DISTINCT CASE WHEN a.status = 'completed' THEN a.id END) as completed_appointments,
+    COUNT(DISTINCT CASE WHEN a.status = 'pending' THEN a.id END) as pending_appointments,
+    COUNT(DISTINCT CASE WHEN a.appointment_date >= CURRENT_DATE THEN a.id END) as upcoming_appointments,
+    COUNT(DISTINCT scr.specialty_id) as specialty_count
 FROM consultation_rooms cr
+JOIN hospitals h ON cr.hospital_id = h.id
 LEFT JOIN appointments a ON cr.id = a.consultation_room_id
+LEFT JOIN specialty_consultation_rooms scr ON cr.id = scr.consultation_room_id
 WHERE cr.active = true
-GROUP BY cr.id, cr.room_number, cr.name, cr.floor, cr.building
-ORDER BY total_appointments DESC;
+GROUP BY cr.id, cr.room_number, cr.name, h.name;
 
 COMMENT ON VIEW v_room_usage_stats IS 'Estadísticas de uso de consultorios';
 
 
 -- =====================================================
--- DATOS INICIALES
+-- RESUMEN DEL ESQUEMA
 -- =====================================================
-
--- Especialidades médicas
-INSERT INTO specialties (name, description, active) VALUES
-('Medicina General', 'Consulta general y diagnóstico inicial', true),
-('Cardiología', 'Especialista en enfermedades del corazón', true),
-('Pediatría', 'Atención médica para niños y adolescentes', true),
-('Dermatología', 'Especialista en enfermedades de la piel', true),
-('Ginecología', 'Salud reproductiva femenina', true),
-('Traumatología', 'Especialista en lesiones del sistema músculo-esquelético', true),
-('Oftalmología', 'Especialista en enfermedades de los ojos', true),
-('Neurología', 'Especialista en el sistema nervioso', true),
-('Psicología', 'Salud mental y bienestar emocional', true),
-('Nutrición', 'Asesoramiento nutricional y dietético', true);
-
-
--- Consultorios (distribuidos en 2 edificios)
-INSERT INTO consultation_rooms (room_number, name, floor, building, description, active) VALUES
--- Edificio A - Medicina General (3 consultorios)
-('GRAL-101', 'Consultorio Medicina General 1', '1', 'Edificio A', 'Equipado para consultas generales', true),
-('GRAL-102', 'Consultorio Medicina General 2', '1', 'Edificio A', 'Equipado para consultas generales', true),
-('GRAL-103', 'Consultorio Medicina General 3', '1', 'Edificio A', 'Equipado para consultas generales', true),
-
--- Edificio A - Cardiología (2 consultorios)
-('CARD-201', 'Consultorio Cardiología 1', '2', 'Edificio A', 'Equipado con ECG', true),
-('CARD-202', 'Consultorio Cardiología 2', '2', 'Edificio A', 'Equipado con ECG y monitor Holter', true),
-
--- Edificio B - Pediatría (2 consultorios)
-('PED-301', 'Consultorio Pediatría 1', '3', 'Edificio B', 'Ambiente infantil', true),
-('PED-302', 'Consultorio Pediatría 2', '3', 'Edificio B', 'Ambiente infantil', true),
-
--- Edificio B - Dermatología (1 consultorio)
-('DERM-401', 'Consultorio Dermatología', '4', 'Edificio B', 'Equipado con dermatoscopio', true),
-
--- Edificio B - Ginecología (1 consultorio)
-('GINE-402', 'Consultorio Ginecología', '4', 'Edificio B', 'Equipado para consultas ginecológicas', true),
-
--- Edificio A - Traumatología (2 consultorios)
-('TRAU-501', 'Consultorio Traumatología 1', '5', 'Edificio A', 'Equipado para evaluación musculoesquelética', true),
-('TRAU-502', 'Consultorio Traumatología 2', '5', 'Edificio A', 'Equipado para evaluación musculoesquelética', true),
-
--- Edificio A - Oftalmología (1 consultorio)
-('OFTA-601', 'Consultorio Oftalmología', '6', 'Edificio A', 'Equipado con oftalmoscopio y tonómetro', true),
-
--- Edificio A - Neurología (1 consultorio)
-('NEUR-602', 'Consultorio Neurología', '6', 'Edificio A', 'Equipado para examen neurológico', true),
-
--- Edificio B - Psicología (2 consultorios)
-('PSI-701', 'Consultorio Psicología 1', '7', 'Edificio B', 'Ambiente privado y confortable', true),
-('PSI-702', 'Consultorio Psicología 2', '7', 'Edificio B', 'Ambiente privado y confortable', true),
-
--- Edificio B - Nutrición (1 consultorio)
-('NUTR-703', 'Consultorio Nutrición', '7', 'Edificio B', 'Equipado con balanza y medidor de composición corporal', true);
-
-
--- Asignar consultorios a especialidades
-INSERT INTO specialty_consultation_rooms (specialty_id, consultation_room_id) VALUES
--- Medicina General (id=1) -> GRAL-101, GRAL-102, GRAL-103
-(1, 1), (1, 2), (1, 3),
--- Cardiología (id=2) -> CARD-201, CARD-202
-(2, 4), (2, 5),
--- Pediatría (id=3) -> PED-301, PED-302
-(3, 6), (3, 7),
--- Dermatología (id=4) -> DERM-401
-(4, 8),
--- Ginecología (id=5) -> GINE-402
-(5, 9),
--- Traumatología (id=6) -> TRAU-501, TRAU-502
-(6, 10), (6, 11),
--- Oftalmología (id=7) -> OFTA-601
-(7, 12),
--- Neurología (id=8) -> NEUR-602
-(8, 13),
--- Psicología (id=9) -> PSI-701, PSI-702
-(9, 14), (9, 15),
--- Nutrición (id=10) -> NUTR-703
-(10, 16);
-
-
--- =====================================================
--- RESUMEN DE INSTALACIÓN
--- =====================================================
-
-DO $$
-BEGIN
-    RAISE NOTICE '';
-    RAISE NOTICE '================================================';
-    RAISE NOTICE '✅ ESQUEMA CREADO EXITOSAMENTE';
-    RAISE NOTICE '================================================';
-    RAISE NOTICE '';
-    RAISE NOTICE 'TABLAS CREADAS:';
-    RAISE NOTICE '  • patients (pacientes)';
-    RAISE NOTICE '  • specialties (especialidades)';
-    RAISE NOTICE '  • consultation_rooms (consultorios)';
-    RAISE NOTICE '  • specialty_consultation_rooms (relación M:N)';
-    RAISE NOTICE '  • appointments (citas médicas)';
-    RAISE NOTICE '';
-    RAISE NOTICE 'DATOS INICIALES:';
-    RAISE NOTICE '  • 10 especialidades médicas';
-    RAISE NOTICE '  • 16 consultorios distribuidos en 2 edificios';
-    RAISE NOTICE '  • Asignaciones automáticas';
-    RAISE NOTICE '';
-    RAISE NOTICE 'CARACTERÍSTICAS:';
-    RAISE NOTICE '  • Horarios dinámicos (sin tabla schedules)';
-    RAISE NOTICE '  • Turnos: Mañana (8-13h) / Tarde (14-18h)';
-    RAISE NOTICE '  • Slots de 20 minutos (5 por hora)';
-    RAISE NOTICE '  • Días laborales: Lunes a Viernes';
-    RAISE NOTICE '  • Relación M:N entre especialidades y consultorios';
-    RAISE NOTICE '';
-    RAISE NOTICE 'PRÓXIMO PASO:';
-    RAISE NOTICE '  Ejecutar: python init_db.py';
-    RAISE NOTICE '  (Para crear pacientes de prueba y citas de ejemplo)';
-    RAISE NOTICE '';
-    RAISE NOTICE 'VERIFICAR:';
-    RAISE NOTICE '  SELECT * FROM v_specialties_with_rooms;';
-    RAISE NOTICE '  SELECT * FROM v_consultation_rooms_with_specialties;';
-    RAISE NOTICE '';
-END $$;
+SELECT '========================================' as "";
+SELECT 'ESQUEMA DE BASE DE DATOS CREADO' as "";
+SELECT '========================================' as "";
+SELECT 'Versión: 4.0' as "";
+SELECT 'Fecha: Octubre 2024' as "";
+SELECT '========================================' as "";
+SELECT 'Estructura:' as "";
+SELECT '  Hospital → Especialidades → Consultorios' as "";
+SELECT '  Pacientes → Citas → Consultorios' as "";
+SELECT '========================================' as "";
+SELECT 'Tablas principales:' as "";
+SELECT '  - patients (pacientes)' as "";
+SELECT '  - specialties (especialidades)' as "";
+SELECT '  - hospitals (hospitales)' as "";
+SELECT '  - hospital_specialties (M:N)' as "";
+SELECT '  - consultation_rooms (consultorios)' as "";
+SELECT '  - specialty_consultation_rooms (M:N)' as "";
+SELECT '  - appointments (citas)' as "";
+SELECT '========================================' as "";
+SELECT 'Vistas creadas:' as "";
+SELECT '  - v_hospitals_with_stats' as "";
+SELECT '  - v_hospital_specialties' as "";
+SELECT '  - v_consultation_rooms_with_info' as "";
+SELECT '  - v_upcoming_appointments' as "";
+SELECT '  - v_room_usage_stats' as "";
+SELECT '========================================' as "";

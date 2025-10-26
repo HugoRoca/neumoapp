@@ -2,9 +2,10 @@
 Hospital Repository
 Handles database operations for hospitals
 """
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from app.models.hospital import Hospital
+from app.models.specialty import Specialty
 
 
 class HospitalRepository:
@@ -23,6 +24,15 @@ class HospitalRepository:
     def get_by_id(self, hospital_id: int) -> Optional[Hospital]:
         """Get hospital by ID"""
         return self.db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    
+    def get_by_id_with_specialties(self, hospital_id: int) -> Optional[Hospital]:
+        """Get hospital by ID with specialties loaded"""
+        return (
+            self.db.query(Hospital)
+            .options(joinedload(Hospital.specialties))
+            .filter(Hospital.id == hospital_id)
+            .first()
+        )
     
     def get_by_code(self, code: str) -> Optional[Hospital]:
         """Get hospital by code"""
@@ -49,4 +59,47 @@ class HospitalRepository:
             self.db.commit()
             return True
         return False
+    
+    # Métodos para gestionar especialidades
+    
+    def get_specialties(self, hospital_id: int, active_only: bool = True) -> List[Specialty]:
+        """Get all specialties for a hospital"""
+        hospital = self.get_by_id_with_specialties(hospital_id)
+        if not hospital:
+            return []
+        
+        specialties = hospital.specialties
+        if active_only:
+            specialties = [s for s in specialties if s.active]
+        
+        return specialties
+    
+    def has_specialty(self, hospital_id: int, specialty_id: int) -> bool:
+        """Check if hospital has a specific specialty"""
+        hospital = self.get_by_id_with_specialties(hospital_id)
+        if not hospital:
+            return False
+        return any(s.id == specialty_id for s in hospital.specialties)
+    
+    def add_specialty(self, hospital_id: int, specialty: Specialty) -> bool:
+        """Add a specialty to a hospital"""
+        hospital = self.get_by_id(hospital_id)
+        if not hospital:
+            return False
+        
+        if specialty not in hospital.specialties:
+            hospital.specialties.append(specialty)
+            self.db.commit()
+        return True
+    
+    def remove_specialty(self, hospital_id: int, specialty: Specialty) -> bool:
+        """Remove a specialty from a hospital"""
+        hospital = self.get_by_id(hospital_id)
+        if not hospital:
+            return False
+        
+        if specialty in hospital.specialties:
+            hospital.specialties.remove(specialty)
+            self.db.commit()
+        return True
 

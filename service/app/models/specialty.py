@@ -17,6 +17,13 @@ class Specialty(Base):
     # Relaciones
     appointments = relationship("Appointment", back_populates="specialty")
     
+    # Relación muchos a muchos con hospitales
+    hospitals = relationship(
+        "Hospital",
+        secondary="hospital_specialties",
+        back_populates="specialties"
+    )
+    
     # Relación muchos a muchos con consultorios
     consultation_rooms = relationship(
         "ConsultationRoom",

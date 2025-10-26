@@ -1,18 +1,18 @@
-
-
 # Neumoapp API - Medical Appointment Management System
 
-REST API developed with FastAPI for medical appointment management, allowing patients to schedule, consult and manage their appointments with different medical specialties.
+REST API developed with FastAPI for medical appointment management, allowing patients to schedule, consult and manage their appointments at different hospitals with multiple medical specialties.
 
 ## 📑 Table of Contents
 
 - [Quick Start](#-quick-start)
 - [Architecture](#-architecture)
 - [Features](#-features)
+- [New Structure: Hospital → Specialties → Consultation Rooms](#-new-structure)
 - [Prerequisites](#-prerequisites)
 - [Installation](#-installation)
 - [API Documentation](#-api-documentation)
 - [API Endpoints](#-api-endpoints)
+- [Booking Flow](#-booking-flow)
 - [Usage Examples](#-usage-examples)
 - [Database Model](#-database-model)
 - [Test Patients](#-test-patients)
@@ -25,20 +25,17 @@ REST API developed with FastAPI for medical appointment management, allowing pat
 docker-compose up -d
 
 # 2. Create virtual environment and install dependencies
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python3 -m venv neumoapp
+source neumoapp/bin/activate  # On Windows: neumoapp\Scripts\activate
 pip install -r requirements.txt
 
-# 3. Create database schema
-psql -U root -d neumoapp_db -f database_schema.sql
+# 3. Initialize database with sample data
+python init_db.py
 
-# 4. Insert sample data (optional)
-psql -U root -d neumoapp_db -f insert_sample_data.sql
+# 4. Run the API
+uvicorn main:app --reload --host 0.0.0.0 --port 3000
 
-# 5. Run the API
-python main.py
-
-# 6. Access Swagger UI
+# 5. Access Swagger UI
 open http://localhost:3000/docs
 ```
 
@@ -47,11 +44,24 @@ open http://localhost:3000/docs
 ## 🏗️ Architecture
 
 This project follows **Clean Architecture** principles with separation into layers:
-- **Controllers** - HTTP request handlers
-- **Services** - Business logic
-- **Repositories** - Data access layer
-- **Models** - Database entities
-- **Schemas** - Data validation and serialization
+
+### Layer Structure
+```
+app/
+├── controllers/     # HTTP request handlers (FastAPI routes)
+├── services/        # Business logic layer
+├── repositories/    # Data access layer
+├── models/          # SQLAlchemy ORM models
+├── schemas/         # Pydantic validation schemas
+├── core/            # Configuration, security, dependencies
+└── database/        # Database connection
+```
+
+### Key Principles
+- **Separation of Concerns**: Each layer has a single responsibility
+- **Dependency Injection**: Services receive dependencies via constructors
+- **Independent of Frameworks**: Business logic doesn't depend on FastAPI
+- **Testable**: Easy to mock dependencies for unit testing
 
 📖 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
@@ -59,18 +69,61 @@ This project follows **Clean Architecture** principles with separation into laye
 
 - ✅ JWT (JSON Web Tokens) authentication
 - ✅ Patient registration and login with document number
-- ✅ Personal appointments dashboard
-- ✅ **Hospital management system** - Multi-hospital support
+- ✅ **Multi-hospital system** - Manage multiple hospitals/clinics
+- ✅ **Hospital → Specialties hierarchy** - Each hospital offers specific specialties
+- ✅ **Specialties → Consultation Rooms** - Rooms can serve multiple specialties
+- ✅ **Dynamic slot generation** - No pre-generated schedules
 - ✅ Medical specialties management
 - ✅ Consultation rooms with M:N relationship to specialties
-- ✅ **Hierarchical structure:** Hospital → Rooms → Specialties
-- ✅ Dynamic scheduling system (morning: 8-13h, afternoon: 14-18h)
-- ✅ 20-minute time slots (5 per hour)
-- ✅ Appointment scheduling with consultation room assignment
+- ✅ Intelligent booking flow with hospital selection first
+- ✅ Real-time availability checking
+- ✅ 20-minute time slots (morning: 8AM-1PM, afternoon: 2PM-6PM)
+- ✅ Appointment scheduling with automatic validations
 - ✅ Appointment cancellation with schedule release
 - ✅ PostgreSQL database with advanced views and functions
 - ✅ Automatic documentation with Swagger UI
 - ✅ Clean Architecture with layered design
+
+## 🏥 New Structure
+
+### Hospital → Specialties → Consultation Rooms
+
+The system now follows a hierarchical structure:
+
+```
+Hospital (Hospital Nacional Rebagliati)
+  ├── Specialty (Cardiología)
+  │     ├── Room 1 (R-CARD-201)
+  │     └── Room 2 (R-CARD-202)
+  ├── Specialty (Medicina General)
+  │     ├── Room 1 (R-GRAL-101)
+  │     ├── Room 2 (R-GRAL-102)
+  │     └── Room 3 (R-GRAL-103)
+  └── ...
+```
+
+### Key Relationships
+
+1. **Hospital ↔ Specialty** (Many-to-Many)
+   - A hospital offers multiple specialties
+   - A specialty can be offered by multiple hospitals
+   - Managed via `hospital_specialties` table
+
+2. **Hospital → Consultation Room** (One-to-Many)
+   - A consultation room belongs to exactly one hospital
+   - A hospital has multiple consultation rooms
+
+3. **Specialty ↔ Consultation Room** (Many-to-Many)
+   - A consultation room can serve multiple specialties
+   - A specialty uses multiple consultation rooms
+   - Managed via `specialty_consultation_rooms` table
+
+### Why This Structure?
+
+- **Realistic**: Mirrors real-world hospital organization
+- **Flexible**: Easy to add new hospitals or reassign specialties
+- **Scalable**: Supports multi-location healthcare networks
+- **Better UX**: Patients select hospital first, then see relevant options
 
 ## 📋 Prerequisites
 
@@ -100,8 +153,8 @@ This will start PostgreSQL on port 5432 with these credentials:
 ### 3. Create Python virtual environment
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python3 -m venv neumoapp
+source neumoapp/bin/activate  # On Windows: neumoapp\Scripts\activate
 ```
 
 ### 4. Install dependencies
@@ -110,622 +163,589 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 5. Verify/Configure environment variables
-
-The `.env` file is configured with:
-
-```env
-DATABASE_URL=postgresql://root:root@localhost:5432/neumoapp_db
-SECRET_KEY=neumoapp-secret-key-change-in-production-2024
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-PROJECT_NAME=Neumoapp API
-VERSION=1.0.0
-```
-
-### 6. Create database schema
-
-```bash
-psql -U root -d neumoapp_db -f database_schema.sql
-```
-
-This will create:
-- All database tables
-- 10 medical specialties
-- 16 consultation rooms
-- Functions, triggers, and views
-
-### 7. Initialize sample data
+### 5. Initialize database with sample data
 
 ```bash
 python init_db.py
 ```
 
 This will create:
-- 5 test patients
-- Sample appointments
+- 5 sample patients
+- 10 medical specialties
+- 3 hospitals (Rebagliati, Almenara, San Felipe)
+- Hospital-specialty assignments
+- 25+ consultation rooms across hospitals
+- Specialty-room assignments
+- 5 sample appointments
 
-### 8. Run the application
+### 6. Run the API
 
 ```bash
-python main.py
+uvicorn main:app --reload --host 0.0.0.0 --port 3000
 ```
 
-The API will be available at: **http://localhost:3000**
+The API will be available at: `http://localhost:3000`
 
-## 📚 API Documentation
-
-Once the application is running, you can access interactive documentation:
+### 7. Access API Documentation
 
 - **Swagger UI**: http://localhost:3000/docs
 - **ReDoc**: http://localhost:3000/redoc
 
-### Endpoint Summary
+## 📚 API Documentation
 
-The API provides **28 endpoints** across 7 main categories:
+Interactive documentation is available at:
+- **Swagger UI**: http://localhost:3000/docs (try out endpoints)
+- **ReDoc**: http://localhost:3000/redoc (cleaner documentation view)
 
-| Category | Endpoints | Description |
-|----------|-----------|-------------|
-| 🔐 Authentication | 3 | Register, login, profile |
-| 👥 Patients | 2 | List and view patients |
-| 🏥 Specialties | 3 | Manage medical specialties |
-| 🏥 **Hospitals** | 5 | **Manage hospitals** |
-| 🏢 Consultation Rooms | 8 | Manage consultation rooms and assignments |
-| ⏰ Available Slots | 1 | Query available appointment slots (by hospital) |
-| 📅 Appointments | 6 | Book, view, update, and cancel appointments |
+## 🔌 API Endpoints
 
-## 🗂️ Project Structure
+### Authentication
 
-```
-service/
-├── app/
-│   ├── controllers/              # 🎮 Presentation Layer
-│   │   ├── auth_controller.py         # Authentication endpoints
-│   │   ├── patient_controller.py      # Patient endpoints
-│   │   ├── specialty_controller.py    # Specialties endpoints
-│   │   ├── schedule_controller.py     # Schedules endpoints
-│   │   └── appointment_controller.py  # Appointments endpoints
-│   ├── services/                 # 💼 Business Logic Layer
-│   │   ├── auth_service.py            # Authentication logic
-│   │   ├── patient_service.py         # Patient business logic
-│   │   ├── specialty_service.py       # Specialties business logic
-│   │   ├── schedule_service.py        # Schedules business logic
-│   │   └── appointment_service.py     # Appointments business logic
-│   ├── repositories/             # 🗄️ Data Access Layer
-│   │   ├── patient_repository.py      # Patient CRUD operations
-│   │   ├── specialty_repository.py    # Specialties CRUD operations
-│   │   ├── schedule_repository.py     # Schedules CRUD operations
-│   │   └── appointment_repository.py  # Appointments CRUD operations
-│   ├── models/                   # 🗃️ Database Entities
-│   │   ├── patient.py                 # Patient Entity
-│   │   ├── specialty.py               # Specialty Entity
-│   │   ├── schedule.py                # Schedule Entity
-│   │   └── appointment.py             # Appointment Entity
-│   ├── schemas/                  # 📋 DTOs / Validation
-│   │   ├── patient.py                 # Patient Schemas
-│   │   ├── specialty.py               # Specialty Schemas
-│   │   ├── schedule.py                # Schedule Schemas
-│   │   └── appointment.py             # Appointment Schemas
-│   ├── core/                     # ⚙️ Configuration
-│   │   ├── config.py                  # Application configuration
-│   │   ├── security.py                # Security (JWT, hash)
-│   │   └── dependencies.py            # Shared dependencies
-│   └── database/                 # 🔌 Database Connection
-│       └── base.py                    # SQLAlchemy setup
-├── main.py                       # 🚀 Application entry point
-├── init_db.py                    # DB initialization script
-├── docker-compose.yml            # Docker configuration
-├── requirements.txt              # Python dependencies
-├── ARCHITECTURE.md               # Architecture documentation
-└── README.md                     # This file
-```
-
-## 🔐 Authentication
-
-The API uses JWT (JSON Web Tokens) for authentication. All endpoints (except `/auth/register` and `/auth/login`) require authentication.
-
-### Authentication flow:
-
-1. **Register a patient**: `POST /auth/register`
-2. **Login**: `POST /auth/login` - Returns a JWT token
-3. **Use the token**: Include in header `Authorization: Bearer <token>` in all requests
-
-## 📍 API Endpoints
-
-### 🔐 Authentication (`/auth`)
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `POST` | `/auth/register` | Register new patient | ❌ No |
-| `POST` | `/auth/login` | Login and get JWT token | ❌ No |
-| `GET` | `/auth/me` | Get authenticated patient profile | ✅ Yes |
+| `POST` | `/auth/register` | Register new patient | ❌ |
+| `POST` | `/auth/login` | Login with document number & password | ❌ |
 
-### 👥 Patients (`/patients`)
+### Patients
+
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `GET` | `/patients/` | List all patients | ✅ Yes |
-| `GET` | `/patients/{patient_id}` | Get patient by ID | ✅ Yes |
+| `GET` | `/patients/me` | Get current patient profile | ✅ |
+| `PUT` | `/patients/me` | Update patient profile | ✅ |
 
-### 🏥 Specialties (`/specialties`)
+### Hospitals
+
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `GET` | `/specialties/` | List all specialties | ✅ Yes |
-| `GET` | `/specialties/{specialty_id}` | Get specialty by ID | ✅ Yes |
-| `POST` | `/specialties/` | Create new specialty | ✅ Yes (Admin) |
+| `GET` | `/hospitals` | List all hospitals | ✅ |
+| `GET` | `/hospitals/{id}` | Get hospital details | ✅ |
+| `GET` | `/hospitals/{id}/specialties` | **Get specialties offered by hospital** | ✅ |
+| `GET` | `/hospitals/{id}/with-specialties` | Get hospital with specialty list | ✅ |
+| `POST` | `/hospitals` | Create hospital (admin) | ✅ |
+| `PATCH` | `/hospitals/{id}` | Update hospital (admin) | ✅ |
+| `DELETE` | `/hospitals/{id}` | Deactivate hospital (admin) | ✅ |
+| `POST` | `/hospitals/{id}/specialties` | Assign specialty to hospital (admin) | ✅ |
+| `DELETE` | `/hospitals/{id}/specialties/{specialty_id}` | Remove specialty from hospital (admin) | ✅ |
 
-### 🏥 Hospitals (`/hospitals`)
+### Specialties
+
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `GET` | `/hospitals/` | List all hospitals | ✅ Yes |
-| `GET` | `/hospitals/{hospital_id}` | Get hospital by ID | ✅ Yes |
-| `POST` | `/hospitals/` | Create new hospital | ✅ Yes (Admin) |
-| `PATCH` | `/hospitals/{hospital_id}` | Update hospital | ✅ Yes (Admin) |
-| `DELETE` | `/hospitals/{hospital_id}` | Deactivate hospital | ✅ Yes (Admin) |
+| `GET` | `/specialties` | List all specialties | ✅ |
+| `GET` | `/specialties/{id}` | Get specialty details | ✅ |
+| `POST` | `/specialties` | Create specialty (admin) | ✅ |
 
-### 🏢 Consultation Rooms (`/consultation-rooms`)
+### Consultation Rooms
+
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `GET` | `/consultation-rooms/` | List all consultation rooms | ✅ Yes |
-| `GET` | `/consultation-rooms/by-specialty/{specialty_id}` | Get rooms by specialty | ✅ Yes |
-| `GET` | `/consultation-rooms/{room_id}` | Get room details with specialties | ✅ Yes |
-| `POST` | `/consultation-rooms/` | Create new consultation room | ✅ Yes (Admin) |
-| `PATCH` | `/consultation-rooms/{room_id}` | Update consultation room | ✅ Yes (Admin) |
-| `POST` | `/consultation-rooms/{room_id}/assign-specialty` | Assign specialty to room | ✅ Yes (Admin) |
-| `DELETE` | `/consultation-rooms/{room_id}/remove-specialty` | Remove specialty from room | ✅ Yes (Admin) |
-| `DELETE` | `/consultation-rooms/{room_id}` | Deactivate consultation room | ✅ Yes (Admin) |
+| `GET` | `/consultation-rooms` | List all rooms | ✅ |
+| `GET` | `/consultation-rooms/{id}` | Get room details | ✅ |
+| `POST` | `/consultation-rooms` | Create room (admin) | ✅ |
+| `PATCH` | `/consultation-rooms/{id}` | Update room (admin) | ✅ |
 
-### ⏰ Available Slots (`/slots`)
+### Available Slots
+
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `GET` | `/slots/available` | Get available time slots | ✅ Yes |
+| `GET` | `/slots/available` | **Get available time slots** | ✅ |
 
 **Query Parameters:**
-- `hospital_id` (required) - ID of the hospital ⭐ **NEW**
-- `specialty_id` (required) - ID of the specialty
-- `date` (required) - Date in format YYYY-MM-DD
-- `shift` (required) - morning or afternoon
+- `hospital_id` (required): Hospital ID
+- `specialty_id` (required): Specialty ID
+- `date` (required): Date (YYYY-MM-DD)
+- `shift` (required): "morning" or "afternoon"
 
-### 📅 Appointments (`/appointments`)
+### Appointments
+
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `POST` | `/appointments/` | Book a new appointment | ✅ Yes |
-| `GET` | `/appointments/my-appointments` | Get my appointments (Dashboard) | ✅ Yes |
-| `GET` | `/appointments/upcoming` | Get all upcoming appointments | ✅ Yes |
-| `GET` | `/appointments/{appointment_id}` | Get appointment details | ✅ Yes |
-| `PATCH` | `/appointments/{appointment_id}` | Update appointment | ✅ Yes |
-| `DELETE` | `/appointments/{appointment_id}` | Cancel appointment | ✅ Yes |
+| `POST` | `/appointments` | **Book appointment** | ✅ |
+| `GET` | `/appointments/my-appointments` | Get my appointments | ✅ |
+| `GET` | `/appointments/upcoming` | Get upcoming appointments | ✅ |
+| `GET` | `/appointments/{id}` | Get appointment details | ✅ |
+| `PATCH` | `/appointments/{id}` | Update appointment | ✅ |
+| `DELETE` | `/appointments/{id}` | Cancel appointment | ✅ |
 
-## 📝 Usage Examples
+## 🔄 Booking Flow
 
-### 1. Register a patient
+The new booking flow follows these steps:
+
+### Step 1: Select Hospital
+```bash
+GET /hospitals
+```
+**Response:** List of available hospitals
+
+### Step 2: Select Specialty
+```bash
+GET /hospitals/{hospital_id}/specialties
+```
+**Response:** Specialties offered by that hospital with room count
+
+### Step 3: Check Available Slots
+```bash
+GET /slots/available?hospital_id=1&specialty_id=2&date=2024-11-15&shift=morning
+```
+**Response:** Available time slots with consultation room details
+
+### Step 4: Book Appointment
+```bash
+POST /appointments
+Body: {
+  "specialty_id": 2,
+  "consultation_room_id": 5,
+  "appointment_date": "2024-11-15",
+  "start_time": "09:00:00",
+  "shift": "morning",
+  "reason": "Consulta de control"
+}
+```
+**Response:** Confirmed appointment details
+
+## 💡 Usage Examples
+
+### 1. Register a new patient
 
 ```bash
-curl -X POST "http://localhost:3000/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "document_number": "12345678",
-    "lastname": "Pérez",
-    "firstname": "Juan",
-    "date_birth": "1985-05-15",
-    "gender": "Masculino",
-    "address": "Av. Los Álamos 123, Lima",
-    "phone": "987654321",
-    "email": "juan.perez@email.com",
-    "civil_status": "Casado",
-    "password": "password123"
-  }'
+POST http://localhost:3000/auth/register
+Content-Type: application/json
+
+{
+  "document_number": "99999999",
+  "last_name": "Silva",
+  "first_name": "Roberto",
+  "birth_date": "1988-06-15",
+  "gender": "M",
+  "phone": "999111222",
+  "email": "roberto.silva@example.com",
+  "address": "Av. Ejemplo 789",
+  "password": "securepass123"
+}
 ```
 
 ### 2. Login
 
 ```bash
-curl -X POST "http://localhost:3000/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "document_number": "12345678",
-    "password": "password123"
-  }'
+POST http://localhost:3000/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=12345678&password=password123
 ```
 
-Response:
+**Response:**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR...",
   "token_type": "bearer"
 }
 ```
 
-### 3. Get my profile
+### 3. Get all hospitals
 
 ```bash
-curl -X GET "http://localhost:3000/auth/me" \
-  -H "Authorization: Bearer <your-token>"
+GET http://localhost:3000/hospitals
+Authorization: Bearer <your_token>
 ```
 
-### 4. List hospitals
-
-```bash
-curl -X GET "http://localhost:3000/hospitals/" \
-  -H "Authorization: Bearer <your-token>"
-```
-
-Response:
+**Response:**
 ```json
 [
   {
     "id": 1,
-    "name": "Hospital Central",
-    "code": "HOSP-01",
-    "address": "Av. Grau 1234",
-    "district": "Cercado de Lima",
+    "name": "Hospital Nacional Rebagliati",
+    "code": "HNR",
+    "address": "Av. Rebagliati 490, Jesús María",
+    "district": "Jesús María",
     "city": "Lima",
-    "phone": "(01) 424-5678",
-    "email": "info@hospitalcentral.pe",
-    "description": "Hospital principal con todas las especialidades",
-    "active": true
-  }
+    "phone": "01-2654901",
+    "email": "contacto@rebagliati.gob.pe",
+    "active": true,
+    "created_at": "2024-10-26T10:00:00"
+  },
+  ...
 ]
 ```
 
-### 5. List specialties
+### 4. Get specialties for a hospital
 
 ```bash
-curl -X GET "http://localhost:3000/specialties/" \
-  -H "Authorization: Bearer <your-token>"
+GET http://localhost:3000/hospitals/1/specialties
+Authorization: Bearer <your_token>
 ```
 
-### 6. List consultation rooms by specialty
-
-```bash
-curl -X GET "http://localhost:3000/consultation-rooms/by-specialty/1" \
-  -H "Authorization: Bearer <your-token>"
-```
-
-Response:
+**Response:**
 ```json
 [
   {
-    "id": 1,
-    "room_number": "GRAL-101",
-    "name": "Consultorio Medicina General 1",
-    "floor": "1",
-    "building": "Edificio A",
-    "description": "Equipado para consultas generales",
-    "active": true
-  }
+    "id": 2,
+    "name": "Cardiología",
+    "description": "Especialista en enfermedades del corazón",
+    "active": true,
+    "available_rooms": 2,
+    "created_at": "2024-10-26T10:00:00"
+  },
+  ...
 ]
 ```
 
-### 7. Query available time slots
-
-⭐ **Now requires hospital_id parameter**
+### 5. Check available slots
 
 ```bash
-curl -X GET "http://localhost:3000/slots/available?hospital_id=1&specialty_id=1&date=2024-10-30&shift=morning" \
-  -H "Authorization: Bearer <your-token>"
+GET http://localhost:3000/slots/available?hospital_id=1&specialty_id=2&date=2024-11-18&shift=morning
+Authorization: Bearer <your_token>
 ```
 
-Response:
+**Response:**
 ```json
 {
-  "specialty_id": 1,
-  "specialty_name": "Medicina General",
-  "date": "2024-10-30",
+  "specialty_id": 2,
+  "specialty_name": "Cardiología",
+  "date": "2024-11-18",
   "shift": "morning",
   "slots": [
     {
       "start_time": "08:00:00",
       "end_time": "08:20:00",
       "consultation_room": {
-        "id": 1,
-        "room_number": "GRAL-101",
-        "name": "Consultorio Medicina General 1"
+        "id": 4,
+        "room_number": "R-CARD-201",
+        "name": "Consultorio Cardiología 1"
       },
       "available": true
-    }
+    },
+    {
+      "start_time": "08:20:00",
+      "end_time": "08:40:00",
+      "consultation_room": {
+        "id": 4,
+        "room_number": "R-CARD-201",
+        "name": "Consultorio Cardiología 1"
+      },
+      "available": true
+    },
+    ...
   ]
 }
 ```
 
-**Note:** Slots are now filtered by hospital. Only consultation rooms belonging to the selected hospital will be shown.
-
-### 8. Book an appointment
+### 6. Book an appointment
 
 ```bash
-curl -X POST "http://localhost:3000/appointments/" \
-  -H "Authorization: Bearer <your-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "specialty_id": 1,
-    "consultation_room_id": 1,
-    "appointment_date": "2024-10-30",
-    "start_time": "08:00:00",
-    "shift": "morning",
-    "reason": "Chequeo médico general"
-  }'
+POST http://localhost:3000/appointments
+Authorization: Bearer <your_token>
+Content-Type: application/json
+
+{
+  "specialty_id": 2,
+  "consultation_room_id": 4,
+  "appointment_date": "2024-11-18",
+  "start_time": "08:00:00",
+  "shift": "morning",
+  "reason": "Control de presión arterial"
+}
 ```
 
-### 9. View my appointments (Dashboard)
-
-```bash
-curl -X GET "http://localhost:3000/appointments/my-appointments" \
-  -H "Authorization: Bearer <your-token>"
-```
-
-Response:
+**Response:**
 ```json
-[
-  {
-    "id": 1,
-    "patient_id": 1,
-    "specialty_id": 1,
-    "specialty_name": "Medicina General",
-    "consultation_room_id": 1,
-    "consultation_room_number": "GRAL-101",
-    "consultation_room_name": "Consultorio Medicina General 1",
-    "appointment_date": "2024-10-30",
-    "start_time": "08:00:00",
-    "end_time": "08:20:00",
-    "shift": "morning",
-    "status": "confirmed",
-    "reason": "Chequeo médico general"
-  }
-]
+{
+  "id": 6,
+  "patient_id": 1,
+  "specialty_id": 2,
+  "consultation_room_id": 4,
+  "appointment_date": "2024-11-18",
+  "start_time": "08:00:00",
+  "end_time": "08:20:00",
+  "shift": "morning",
+  "status": "pending",
+  "reason": "Control de presión arterial",
+  "created_at": "2024-10-26T14:30:00",
+  "updated_at": "2024-10-26T14:30:00"
+}
 ```
 
-### 10. Update appointment
+### 7. View my appointments
 
 ```bash
-curl -X PATCH "http://localhost:3000/appointments/1" \
-  -H "Authorization: Bearer <your-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "status": "completed",
-    "observations": "Paciente en buen estado. Control en 6 meses."
-  }'
+GET http://localhost:3000/appointments/my-appointments
+Authorization: Bearer <your_token>
 ```
 
-### 11. Cancel an appointment
+### 8. Cancel an appointment
 
 ```bash
-curl -X DELETE "http://localhost:3000/appointments/1" \
-  -H "Authorization: Bearer <your-token>"
-```
-
-### 12. Create a new hospital (Admin)
-
-```bash
-curl -X POST "http://localhost:3000/hospitals/" \
-  -H "Authorization: Bearer <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Clínica Internacional",
-    "code": "HOSP-04",
-    "address": "Av. Garcilaso de la Vega 1420",
-    "district": "Cercado de Lima",
-    "city": "Lima",
-    "phone": "(01) 619-6161",
-    "email": "info@clinicainternacional.pe",
-    "description": "Clínica privada de alta especialidad"
-  }'
-```
-
-### 13. Create a new specialty (Admin)
-
-```bash
-curl -X POST "http://localhost:3000/specialties/" \
-  -H "Authorization: Bearer <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Endocrinología",
-    "description": "Especialista en sistema endocrino y hormonas"
-  }'
-```
-
-### 14. Create a consultation room (Admin)
-
-⭐ **Now requires hospital_id**
-
-```bash
-curl -X POST "http://localhost:3000/consultation-rooms/" \
-  -H "Authorization: Bearer <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hospital_id": 1,
-    "room_number": "ENDO-801",
-    "name": "Consultorio Endocrinología",
-    "floor": "8",
-    "building": "Edificio A",
-    "description": "Equipado para consultas endocrinológicas",
-    "specialty_ids": [11]
-  }'
+DELETE http://localhost:3000/appointments/6
+Authorization: Bearer <your_token>
 ```
 
 ## 🗄️ Database Model
 
-### Main tables:
-
-1. **patients**
-   - id, document_number (unique), lastname, firstname, date_birth, gender, address, phone, email, civil_status, password_hash, active
-
-2. **specialties**
-   - id, name (unique), description, active
-
-3. **hospitals** ⭐ **NEW**
-   - id, name, code (unique), address, district, city, phone, email, description, active
-
-4. **consultation_rooms**
-   - id, **hospital_id** (FK), room_number (unique), name, floor, building, description, active
-
-5. **specialty_consultation_rooms** (M:N)
-   - specialty_id, consultation_room_id
-
-6. **appointments**
-   - id, patient_id, specialty_id, consultation_room_id, appointment_date, start_time, end_time, shift, status, reason, observations
-
-### Hierarchical Structure:
+### Entity Relationship Diagram
 
 ```
-Hospital
-  └─ Consultation Rooms
-      └─ Specialties (M:N)
-          └─ Appointments
+patients                    appointments               specialties
++----------------+         +------------------+       +-----------------+
+| id (PK)        |    ┌────| id (PK)          |       | id (PK)         |
+| document_number|    │    | patient_id (FK)  |───────| name            |
+| last_name      |    │    | specialty_id (FK)|───┐   | description     |
+| first_name     |────┘    | consultation_room|   └───| active          |
+| birth_date     |         | appointment_date |       +-----------------+
+| gender         |         | start_time       |              │
+| email          |         | end_time         |              │ M:N
+| password_hash  |         | shift            |              │
++----------------+         | status           |       hospital_specialties
+                           | reason           |       +-------------------+
+                           +------------------+       | hospital_id (FK)  |
+                                    │                 | specialty_id (FK) |
+                                    │                 | active            |
+                                    │                 +-------------------+
+                                    │                        │
+                           consultation_rooms                │
+                           +-------------------+             │
+                      ┌────| id (PK)           |             │
+                      │    | hospital_id (FK)  |─────────────┘
+                      │    | room_number       |             │
+                      │    | name              |             │
+                      │    | floor             |             │
+                      │    | building          |             │
+                      │    | active            |             │
+                      │    +-------------------+             │
+                      │             │                        │
+                      │             │ M:N                    │
+                      │             │                        │
+                      │    specialty_consultation_rooms     │
+                      │    +---------------------------+    │
+                      │    | specialty_id (FK)         |────┘
+                      └────| consultation_room_id (FK) |
+                           +---------------------------+
+
+                           hospitals
+                           +-----------------+
+                           | id (PK)         |
+                           | name            |
+                           | code            |
+                           | address         |
+                           | district        |
+                           | city            |
+                           | phone           |
+                           | email           |
+                           | active          |
+                           +-----------------+
 ```
 
-### Relationships:
-- One **hospital** has many **consultation rooms**
-- One **consultation room** belongs to one **hospital**
-- One **specialty** can have many **consultation rooms** (M:N)
-- One **consultation room** can serve many **specialties** (M:N)
-- One **patient** can have many **appointments**
-- One **appointment** belongs to a patient, specialty, and consultation room
+### Key Tables
 
-### Key Features:
-- ✅ **Multi-hospital support** - Manage multiple hospitals in one system
-- ✅ **Hospital-based scheduling** - Slots filtered by hospital
-- ✅ **Dynamic scheduling** - No pre-generated schedules table
-- ✅ **Flexible room assignment** - Rooms can be shared between specialties
-- ✅ **Automatic slot generation** - 20-minute slots during working hours
-- ✅ **Weekday validation** - Monday to Friday only
+#### `patients`
+- User authentication and profile data
+- Each patient can have multiple appointments
+
+#### `hospitals`
+- Healthcare facilities where services are provided
+- Can offer multiple specialties
+
+#### `specialties`
+- Medical specialties (Cardiology, Pediatrics, etc.)
+- Can be offered by multiple hospitals
+- Can use multiple consultation rooms
+
+#### `hospital_specialties`
+- M:N relationship between hospitals and specialties
+- Defines which specialties are offered at which hospitals
+
+#### `consultation_rooms`
+- Physical consultation rooms in hospitals
+- Belong to exactly one hospital
+- Can serve multiple specialties
+
+#### `specialty_consultation_rooms`
+- M:N relationship between specialties and consultation rooms
+- Defines which rooms are used for which specialties
+
+#### `appointments`
+- Scheduled appointments
+- Links patients, specialties, and consultation rooms
+- Stores date, time, shift, and status
+
+### Database Views
+
+The system includes several database views for optimized queries:
+
+- `v_hospitals_with_stats` - Hospitals with aggregated statistics
+- `v_hospital_specialties` - Specialties available per hospital
+- `v_consultation_rooms_with_info` - Rooms with hospital and specialty info
+- `v_upcoming_appointments` - Upcoming appointments with full details
+- `v_room_usage_stats` - Usage statistics per consultation room
 
 ## 👥 Test Patients
 
-After running `init_db.py`:
+The database is pre-populated with test patients:
 
-| Document | Password | Name |
-|----------|----------|------|
-| 12345678 | password123 | Juan Pérez |
-| 87654321 | password123 | María González |
-| 11111111 | password123 | Pedro Rodríguez |
-| 22222222 | password123 | Ana Martínez |
+| Document Number | Name | Email | Password |
+|----------------|------|-------|----------|
+| 12345678 | Juan Pérez | juan.perez@example.com | password123 |
+| 87654321 | María González | maria.gonzalez@example.com | password123 |
+| 11111111 | Pedro Rodríguez | pedro.rodriguez@example.com | password123 |
+| 22222222 | Ana Martínez | ana.martinez@example.com | password123 |
+| 33333333 | Carlos López | carlos.lopez@example.com | password123 |
 
-## 🔧 Useful Commands
+## 🏥 Sample Hospitals
 
-### View PostgreSQL logs
-```bash
-docker-compose logs -f postgres
-```
+| Code | Name | Specialties | Rooms |
+|------|------|-------------|-------|
+| HNR | Hospital Nacional Rebagliati | 10 | 14 |
+| HAL | Hospital Almenara | 9 | 7 |
+| CSF | Clínica San Felipe | 6 | 4 |
 
-### Stop database
-```bash
-docker-compose down
-```
+## ⚙️ Business Rules
 
-### Clean database (deletes data)
-```bash
-docker-compose down -v
-docker-compose up -d
-python init_db.py
-```
+### Scheduling Rules
+- **Slots**: 20 minutes each (5 per hour)
+- **Morning shift**: 8:00 AM - 1:00 PM (15 slots)
+- **Afternoon shift**: 2:00 PM - 6:00 PM (12 slots)
+- **Working days**: Monday to Friday only
+- **Real-time validation**: No double-booking
+- **Dynamic generation**: Slots generated on-demand
 
-### Run in development mode
-```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+### Booking Rules
+1. Patient must be authenticated
+2. Hospital must offer the selected specialty
+3. Consultation room must:
+   - Belong to the selected hospital
+   - Be assigned to the selected specialty
+   - Be available at the requested time
+4. Appointment must be:
+   - On a weekday (Monday-Friday)
+   - In the future
+   - Within valid time ranges
 
-## 🛡️ Security
+## 🛠️ Technologies Used
 
-- Passwords are stored hashed with bcrypt
-- JWT tokens expire in 30 minutes (configurable)
-- Data validation with Pydantic
-- SQL injection protection with SQLAlchemy ORM
-
-## 📦 Technologies Used
-
-- **FastAPI** - Modern and fast web framework
-- **SQLAlchemy** - Python ORM with relationships
-- **PostgreSQL 14.4** - Relational database with advanced features
-- **Pydantic** - Data validation and serialization
-- **JWT** - Token-based authentication (bcrypt + SHA256)
+- **FastAPI** - Modern, fast web framework
+- **SQLAlchemy** - SQL toolkit and ORM
+- **Pydantic** - Data validation using Python type hints
+- **PostgreSQL** - Relational database
+- **JWT** - Authentication tokens
+- **Passlib** - Password hashing
 - **Uvicorn** - ASGI server
+- **Python 3.10+** - Programming language
 - **Docker** - Containerization
-- **Clean Architecture** - Layered design (Controllers, Services, Repositories)
 
-## 📊 System Architecture
+## 📝 Environment Variables
 
-### Appointment Booking Flow
+The application uses the following environment variables (defined in `.env`):
 
-1. **Select Hospital** ⭐ Patient chooses from available hospitals
-2. **Select Specialty** - Choose medical specialty
-3. **Select Date & Shift** - Pick date (weekday) and shift (morning/afternoon)
-4. **View Available Slots** - System shows available 20-min slots filtered by hospital
-5. **Book Appointment** - Confirm and book the appointment
-
-### Data Hierarchy
-
-```
-🏥 Hospital (e.g., Hospital Central)
-  ├─ 🏢 Consultation Room 1 (GRAL-101)
-  │   ├─ 💼 Specialty: Medicina General
-  │   └─ 💼 Specialty: Pediatría
-  ├─ 🏢 Consultation Room 2 (CARD-201)
-  │   └─ 💼 Specialty: Cardiología
-  └─ 🏢 Consultation Room 3...
-
-📅 Appointment
-  ├─ 👤 Patient
-  ├─ 🏥 Hospital (via consultation_room)
-  ├─ 🏢 Consultation Room
-  └─ 💼 Specialty
+```env
+DATABASE_URL=postgresql://root:root@localhost:5432/neumoapp_db
+SECRET_KEY=your-secret-key-here
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+PROJECT_NAME=Neumoapp API
+VERSION=4.0
 ```
 
-## 🚀 Production Deployment
+## 🔐 Security
 
-For production, consider:
+- Passwords are hashed using bcrypt (via passlib)
+- JWT tokens for authentication
+- Token expiration: 30 minutes
+- Protected endpoints require valid Bearer token
+- SQL injection protection via SQLAlchemy ORM
 
-1. Change `SECRET_KEY` in environment variables
-2. Configure `allow_origins` in CORS with specific domains
-3. Use production server (Gunicorn + Uvicorn workers)
-4. Configure HTTPS
-5. Implement rate limiting
-6. Add proper logging
-7. Use secure environment variables
-8. Set up database backups
-9. Configure monitoring and alerts
+## 📊 Database Functions
 
-## 📚 Additional Documentation
+The schema includes useful PostgreSQL functions:
 
-- **IMPLEMENTACION_HOSPITALES.md** - Complete documentation of the hospital system
-- **Swagger UI** - Interactive API documentation at `/docs`
-- **ReDoc** - Alternative API documentation at `/redoc`
+- `check_slot_availability()` - Check if a time slot is available
+- `is_weekday()` - Validate if date is Monday-Friday
+- `get_hospital_specialties()` - Get specialties offered by a hospital
+- `get_available_rooms_for_specialty()` - Get rooms for a specialty at a hospital
 
-## 📊 Database Views
+## 🧪 Testing
 
-The system includes helpful database views:
+To test the API:
 
-- `v_hospitals_with_stats` - Hospitals with room and appointment statistics
-- `v_consultation_rooms_with_specialties` - Rooms with assigned specialties
-- `v_specialties_with_rooms` - Specialties with available rooms
-- `v_upcoming_appointments` - Future appointments with complete details
-- `v_room_usage_stats` - Consultation room usage statistics
+1. Use Swagger UI at `http://localhost:3000/docs`
+2. Click "Authorize" and login with test credentials
+3. Try the endpoints in the booking flow order
+4. Or use Postman/curl with the provided examples
 
-## 🔍 Useful Queries
+## 📦 Project Structure
 
-```sql
--- View hospitals with statistics
-SELECT * FROM v_hospitals_with_stats;
-
--- View rooms by hospital
-SELECT h.name as hospital, COUNT(cr.id) as rooms
-FROM hospitals h
-LEFT JOIN consultation_rooms cr ON h.id = cr.hospital_id
-WHERE h.active = true AND cr.active = true
-GROUP BY h.id, h.name;
-
--- View available specialties by hospital
-SELECT h.name as hospital, s.name as specialty, COUNT(DISTINCT cr.id) as rooms
-FROM hospitals h
-JOIN consultation_rooms cr ON h.id = cr.hospital_id
-JOIN specialty_consultation_rooms scr ON cr.id = scr.consultation_room_id
-JOIN specialties s ON scr.specialty_id = s.id
-WHERE h.active = true AND cr.active = true AND s.active = true
-GROUP BY h.id, h.name, s.id, s.name
-ORDER BY h.name, s.name;
+```
+service/
+├── app/
+│   ├── controllers/          # API endpoints
+│   │   ├── auth_controller.py
+│   │   ├── patient_controller.py
+│   │   ├── hospital_controller.py
+│   │   ├── specialty_controller.py
+│   │   ├── consultation_room_controller.py
+│   │   ├── slot_controller.py
+│   │   └── appointment_controller.py
+│   ├── services/             # Business logic
+│   │   ├── auth_service.py
+│   │   ├── patient_service.py
+│   │   ├── hospital_service.py
+│   │   ├── specialty_service.py
+│   │   ├── consultation_room_service.py
+│   │   ├── slot_service.py
+│   │   └── appointment_service.py
+│   ├── repositories/         # Data access
+│   │   ├── patient_repository.py
+│   │   ├── hospital_repository.py
+│   │   ├── specialty_repository.py
+│   │   ├── consultation_room_repository.py
+│   │   └── appointment_repository.py
+│   ├── models/               # SQLAlchemy models
+│   │   ├── patient.py
+│   │   ├── hospital.py
+│   │   ├── specialty.py
+│   │   ├── consultation_room.py
+│   │   └── appointment.py
+│   ├── schemas/              # Pydantic schemas
+│   │   ├── patient.py
+│   │   ├── hospital.py
+│   │   ├── specialty.py
+│   │   ├── consultation_room.py
+│   │   └── appointment.py
+│   ├── core/                 # Configuration
+│   │   ├── config.py
+│   │   ├── security.py
+│   │   └── dependencies.py
+│   └── database/             # DB connection
+│       └── base.py
+├── scripts/
+│   └── database_schema.sql   # Complete DB schema
+├── main.py                   # FastAPI application
+├── init_db.py                # Database initialization
+├── requirements.txt          # Python dependencies
+├── docker-compose.yml        # PostgreSQL container
+└── README.md                 # This file
 ```
 
-## 📞 Support
+## 🚀 Next Steps
 
-For questions or issues, contact the development team.
+Potential improvements:
+- [ ] Admin panel for hospital management
+- [ ] Email notifications for appointments
+- [ ] SMS reminders
+- [ ] Video consultation integration
+- [ ] Doctor/Staff management
+- [ ] Medical records
+- [ ] Prescription management
+- [ ] Payment integration
+- [ ] Multi-language support
 
 ## 📄 License
 
-This project is under the MIT License.
+This project is for educational/demonstration purposes.
+
+## 👨‍💻 Author
+
+Developed as part of the Neumoapp project.
+
+---
+
+**API Base URL**: `http://localhost:3000`  
+**Documentation**: `http://localhost:3000/docs`  
+**Version**: 4.0  
+**Last Updated**: October 2024

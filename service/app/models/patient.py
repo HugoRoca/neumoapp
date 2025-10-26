@@ -9,14 +9,13 @@ class Patient(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     document_number = Column(String(20), unique=True, index=True, nullable=False)
-    lastname = Column(String(100), nullable=False)
-    firstname = Column(String(100), nullable=False)
-    date_birth = Column(Date, nullable=True)
-    gender = Column(String(20), nullable=True)  # Male, Female, Other
+    last_name = Column(String(100), nullable=False)
+    first_name = Column(String(100), nullable=False)
+    birth_date = Column(Date, nullable=False)
+    gender = Column(String(1), nullable=False)  # M, F
     address = Column(String(255), nullable=True)
     phone = Column(String(20), nullable=True)
-    email = Column(String(100), unique=True, index=True, nullable=True)
-    civil_status = Column(String(50), nullable=True)  # Single, Married, Divorced, Widowed
+    email = Column(String(100), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

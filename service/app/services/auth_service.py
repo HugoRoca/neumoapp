@@ -42,14 +42,13 @@ class AuthService:
         
         new_patient = Patient(
             document_number=patient_data.document_number,
-            lastname=patient_data.lastname,
-            firstname=patient_data.firstname,
-            date_birth=patient_data.date_birth,
+            last_name=patient_data.last_name,
+            first_name=patient_data.first_name,
+            birth_date=patient_data.birth_date,
             gender=patient_data.gender,
             address=patient_data.address,
             phone=patient_data.phone,
             email=patient_data.email,
-            civil_status=patient_data.civil_status,
             password_hash=password_hash
         )
         

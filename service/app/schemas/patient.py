@@ -5,14 +5,13 @@ from datetime import datetime, date
 
 class PatientBase(BaseModel):
     document_number: str = Field(..., min_length=8, max_length=20, description="Document number (DNI/ID)")
-    lastname: str = Field(..., min_length=2, max_length=100, description="Last name")
-    firstname: str = Field(..., min_length=2, max_length=100, description="First name")
-    date_birth: Optional[date] = Field(None, description="Date of birth")
-    gender: Optional[str] = Field(None, max_length=20, description="Gender: Male, Female, Other")
+    last_name: str = Field(..., min_length=2, max_length=100, description="Last name")
+    first_name: str = Field(..., min_length=2, max_length=100, description="First name")
+    birth_date: date = Field(..., description="Date of birth")
+    gender: str = Field(..., pattern="^[MF]$", description="Gender: M (Male) or F (Female)")
     address: Optional[str] = Field(None, max_length=255, description="Address")
     phone: Optional[str] = Field(None, max_length=20, description="Phone number")
-    email: Optional[EmailStr] = None
-    civil_status: Optional[str] = Field(None, max_length=50, description="Civil status: Single, Married, Divorced, Widowed")
+    email: EmailStr
 
 
 class PatientCreate(PatientBase):

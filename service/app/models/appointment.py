@@ -29,9 +29,9 @@ class Appointment(Base):
     appointment_date = Column(Date, nullable=False, index=True)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
-    shift = Column(Enum(ShiftType), nullable=False)
+    shift = Column(String(20), nullable=False)  # 'morning' o 'afternoon'
     
-    status = Column(Enum(AppointmentStatus), default=AppointmentStatus.PENDING, index=True)
+    status = Column(String(20), default='pending', index=True)  # 'pending', 'confirmed', 'cancelled', 'completed'
     reason = Column(Text, nullable=True)
     observations = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

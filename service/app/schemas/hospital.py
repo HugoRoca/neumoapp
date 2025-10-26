@@ -1,8 +1,8 @@
 """
 Hospital Schemas
 """
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -21,7 +21,7 @@ class HospitalBase(BaseModel):
 
 class HospitalCreate(HospitalBase):
     """Schema for creating a Hospital"""
-    pass
+    specialty_ids: Optional[List[int]] = Field(default=[], description="List of specialty IDs to assign to this hospital")
 
 
 class HospitalUpdate(BaseModel):
@@ -48,10 +48,39 @@ class HospitalResponse(HospitalBase):
 
 class HospitalWithStats(HospitalResponse):
     """Schema for Hospital with statistics"""
-    total_rooms: int = 0
-    total_specialties: int = 0
-    total_appointments: int = 0
+    specialty_count: int = 0
+    room_count: int = 0
+    upcoming_appointments: int = 0
     
     class Config:
         from_attributes = True
+
+
+# Specialty simple schema (para evitar importación circular)
+class SpecialtySimple(BaseModel):
+    """Simple specialty schema for nested responses"""
+    id: int
+    name: str
+    description: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class HospitalWithSpecialties(HospitalResponse):
+    """Schema for Hospital with its specialties"""
+    specialties: List[SpecialtySimple] = []
+    
+    class Config:
+        from_attributes = True
+
+
+class AssignSpecialtyRequest(BaseModel):
+    """Schema for assigning a specialty to a hospital"""
+    specialty_id: int = Field(..., description="Specialty ID to assign")
+
+
+class RemoveSpecialtyRequest(BaseModel):
+    """Schema for removing a specialty from a hospital"""
+    specialty_id: int = Field(..., description="Specialty ID to remove")
 
