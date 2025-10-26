@@ -60,13 +60,15 @@ This project follows **Clean Architecture** principles with separation into laye
 - ✅ JWT (JSON Web Tokens) authentication
 - ✅ Patient registration and login with document number
 - ✅ Personal appointments dashboard
+- ✅ **Hospital management system** - Multi-hospital support
 - ✅ Medical specialties management
 - ✅ Consultation rooms with M:N relationship to specialties
+- ✅ **Hierarchical structure:** Hospital → Rooms → Specialties
 - ✅ Dynamic scheduling system (morning: 8-13h, afternoon: 14-18h)
 - ✅ 20-minute time slots (5 per hour)
 - ✅ Appointment scheduling with consultation room assignment
 - ✅ Appointment cancellation with schedule release
-- ✅ PostgreSQL database
+- ✅ PostgreSQL database with advanced views and functions
 - ✅ Automatic documentation with Swagger UI
 - ✅ Clean Architecture with layered design
 
@@ -160,15 +162,16 @@ Once the application is running, you can access interactive documentation:
 
 ### Endpoint Summary
 
-The API provides **23 endpoints** across 6 main categories:
+The API provides **28 endpoints** across 7 main categories:
 
 | Category | Endpoints | Description |
 |----------|-----------|-------------|
 | 🔐 Authentication | 3 | Register, login, profile |
 | 👥 Patients | 2 | List and view patients |
 | 🏥 Specialties | 3 | Manage medical specialties |
+| 🏥 **Hospitals** | 5 | **Manage hospitals** |
 | 🏢 Consultation Rooms | 8 | Manage consultation rooms and assignments |
-| ⏰ Available Slots | 1 | Query available appointment slots |
+| ⏰ Available Slots | 1 | Query available appointment slots (by hospital) |
 | 📅 Appointments | 6 | Book, view, update, and cancel appointments |
 
 ## 🗂️ Project Structure
@@ -249,6 +252,15 @@ The API uses JWT (JSON Web Tokens) for authentication. All endpoints (except `/a
 | `GET` | `/specialties/{specialty_id}` | Get specialty by ID | ✅ Yes |
 | `POST` | `/specialties/` | Create new specialty | ✅ Yes (Admin) |
 
+### 🏥 Hospitals (`/hospitals`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `GET` | `/hospitals/` | List all hospitals | ✅ Yes |
+| `GET` | `/hospitals/{hospital_id}` | Get hospital by ID | ✅ Yes |
+| `POST` | `/hospitals/` | Create new hospital | ✅ Yes (Admin) |
+| `PATCH` | `/hospitals/{hospital_id}` | Update hospital | ✅ Yes (Admin) |
+| `DELETE` | `/hospitals/{hospital_id}` | Deactivate hospital | ✅ Yes (Admin) |
+
 ### 🏢 Consultation Rooms (`/consultation-rooms`)
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
@@ -267,6 +279,7 @@ The API uses JWT (JSON Web Tokens) for authentication. All endpoints (except `/a
 | `GET` | `/slots/available` | Get available time slots | ✅ Yes |
 
 **Query Parameters:**
+- `hospital_id` (required) - ID of the hospital ⭐ **NEW**
 - `specialty_id` (required) - ID of the specialty
 - `date` (required) - Date in format YYYY-MM-DD
 - `shift` (required) - morning or afternoon
@@ -328,14 +341,39 @@ curl -X GET "http://localhost:3000/auth/me" \
   -H "Authorization: Bearer <your-token>"
 ```
 
-### 4. List specialties
+### 4. List hospitals
+
+```bash
+curl -X GET "http://localhost:3000/hospitals/" \
+  -H "Authorization: Bearer <your-token>"
+```
+
+Response:
+```json
+[
+  {
+    "id": 1,
+    "name": "Hospital Central",
+    "code": "HOSP-01",
+    "address": "Av. Grau 1234",
+    "district": "Cercado de Lima",
+    "city": "Lima",
+    "phone": "(01) 424-5678",
+    "email": "info@hospitalcentral.pe",
+    "description": "Hospital principal con todas las especialidades",
+    "active": true
+  }
+]
+```
+
+### 5. List specialties
 
 ```bash
 curl -X GET "http://localhost:3000/specialties/" \
   -H "Authorization: Bearer <your-token>"
 ```
 
-### 5. List consultation rooms by specialty
+### 6. List consultation rooms by specialty
 
 ```bash
 curl -X GET "http://localhost:3000/consultation-rooms/by-specialty/1" \
@@ -357,10 +395,12 @@ Response:
 ]
 ```
 
-### 6. Query available time slots
+### 7. Query available time slots
+
+⭐ **Now requires hospital_id parameter**
 
 ```bash
-curl -X GET "http://localhost:3000/slots/available?specialty_id=1&date=2024-10-30&shift=morning" \
+curl -X GET "http://localhost:3000/slots/available?hospital_id=1&specialty_id=1&date=2024-10-30&shift=morning" \
   -H "Authorization: Bearer <your-token>"
 ```
 
@@ -386,7 +426,9 @@ Response:
 }
 ```
 
-### 7. Book an appointment
+**Note:** Slots are now filtered by hospital. Only consultation rooms belonging to the selected hospital will be shown.
+
+### 8. Book an appointment
 
 ```bash
 curl -X POST "http://localhost:3000/appointments/" \
@@ -402,7 +444,7 @@ curl -X POST "http://localhost:3000/appointments/" \
   }'
 ```
 
-### 8. View my appointments (Dashboard)
+### 9. View my appointments (Dashboard)
 
 ```bash
 curl -X GET "http://localhost:3000/appointments/my-appointments" \
@@ -430,7 +472,7 @@ Response:
 ]
 ```
 
-### 9. Update appointment
+### 10. Update appointment
 
 ```bash
 curl -X PATCH "http://localhost:3000/appointments/1" \
@@ -442,14 +484,32 @@ curl -X PATCH "http://localhost:3000/appointments/1" \
   }'
 ```
 
-### 10. Cancel an appointment
+### 11. Cancel an appointment
 
 ```bash
 curl -X DELETE "http://localhost:3000/appointments/1" \
   -H "Authorization: Bearer <your-token>"
 ```
 
-### 11. Create a new specialty (Admin)
+### 12. Create a new hospital (Admin)
+
+```bash
+curl -X POST "http://localhost:3000/hospitals/" \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Clínica Internacional",
+    "code": "HOSP-04",
+    "address": "Av. Garcilaso de la Vega 1420",
+    "district": "Cercado de Lima",
+    "city": "Lima",
+    "phone": "(01) 619-6161",
+    "email": "info@clinicainternacional.pe",
+    "description": "Clínica privada de alta especialidad"
+  }'
+```
+
+### 13. Create a new specialty (Admin)
 
 ```bash
 curl -X POST "http://localhost:3000/specialties/" \
@@ -461,13 +521,16 @@ curl -X POST "http://localhost:3000/specialties/" \
   }'
 ```
 
-### 12. Create a consultation room (Admin)
+### 14. Create a consultation room (Admin)
+
+⭐ **Now requires hospital_id**
 
 ```bash
 curl -X POST "http://localhost:3000/consultation-rooms/" \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
+    "hospital_id": 1,
     "room_number": "ENDO-801",
     "name": "Consultorio Endocrinología",
     "floor": "8",
@@ -487,22 +550,38 @@ curl -X POST "http://localhost:3000/consultation-rooms/" \
 2. **specialties**
    - id, name (unique), description, active
 
-3. **consultation_rooms**
-   - id, room_number (unique), name, floor, building, description, active
+3. **hospitals** ⭐ **NEW**
+   - id, name, code (unique), address, district, city, phone, email, description, active
 
-4. **specialty_consultation_rooms** (M:N)
+4. **consultation_rooms**
+   - id, **hospital_id** (FK), room_number (unique), name, floor, building, description, active
+
+5. **specialty_consultation_rooms** (M:N)
    - specialty_id, consultation_room_id
 
-5. **appointments**
+6. **appointments**
    - id, patient_id, specialty_id, consultation_room_id, appointment_date, start_time, end_time, shift, status, reason, observations
 
+### Hierarchical Structure:
+
+```
+Hospital
+  └─ Consultation Rooms
+      └─ Specialties (M:N)
+          └─ Appointments
+```
+
 ### Relationships:
-- One patient can have many appointments
-- One specialty can have many consultation rooms (M:N)
-- One consultation room can serve many specialties (M:N)
-- One appointment belongs to a patient, specialty, and consultation room
+- One **hospital** has many **consultation rooms**
+- One **consultation room** belongs to one **hospital**
+- One **specialty** can have many **consultation rooms** (M:N)
+- One **consultation room** can serve many **specialties** (M:N)
+- One **patient** can have many **appointments**
+- One **appointment** belongs to a patient, specialty, and consultation room
 
 ### Key Features:
+- ✅ **Multi-hospital support** - Manage multiple hospitals in one system
+- ✅ **Hospital-based scheduling** - Slots filtered by hospital
 - ✅ **Dynamic scheduling** - No pre-generated schedules table
 - ✅ **Flexible room assignment** - Rooms can be shared between specialties
 - ✅ **Automatic slot generation** - 20-minute slots during working hours
@@ -553,12 +632,41 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ## 📦 Technologies Used
 
 - **FastAPI** - Modern and fast web framework
-- **SQLAlchemy** - Python ORM
-- **PostgreSQL** - Relational database
-- **Pydantic** - Data validation
-- **JWT** - Token-based authentication
+- **SQLAlchemy** - Python ORM with relationships
+- **PostgreSQL 14.4** - Relational database with advanced features
+- **Pydantic** - Data validation and serialization
+- **JWT** - Token-based authentication (bcrypt + SHA256)
 - **Uvicorn** - ASGI server
 - **Docker** - Containerization
+- **Clean Architecture** - Layered design (Controllers, Services, Repositories)
+
+## 📊 System Architecture
+
+### Appointment Booking Flow
+
+1. **Select Hospital** ⭐ Patient chooses from available hospitals
+2. **Select Specialty** - Choose medical specialty
+3. **Select Date & Shift** - Pick date (weekday) and shift (morning/afternoon)
+4. **View Available Slots** - System shows available 20-min slots filtered by hospital
+5. **Book Appointment** - Confirm and book the appointment
+
+### Data Hierarchy
+
+```
+🏥 Hospital (e.g., Hospital Central)
+  ├─ 🏢 Consultation Room 1 (GRAL-101)
+  │   ├─ 💼 Specialty: Medicina General
+  │   └─ 💼 Specialty: Pediatría
+  ├─ 🏢 Consultation Room 2 (CARD-201)
+  │   └─ 💼 Specialty: Cardiología
+  └─ 🏢 Consultation Room 3...
+
+📅 Appointment
+  ├─ 👤 Patient
+  ├─ 🏥 Hospital (via consultation_room)
+  ├─ 🏢 Consultation Room
+  └─ 💼 Specialty
+```
 
 ## 🚀 Production Deployment
 
@@ -571,6 +679,48 @@ For production, consider:
 5. Implement rate limiting
 6. Add proper logging
 7. Use secure environment variables
+8. Set up database backups
+9. Configure monitoring and alerts
+
+## 📚 Additional Documentation
+
+- **IMPLEMENTACION_HOSPITALES.md** - Complete documentation of the hospital system
+- **Swagger UI** - Interactive API documentation at `/docs`
+- **ReDoc** - Alternative API documentation at `/redoc`
+
+## 📊 Database Views
+
+The system includes helpful database views:
+
+- `v_hospitals_with_stats` - Hospitals with room and appointment statistics
+- `v_consultation_rooms_with_specialties` - Rooms with assigned specialties
+- `v_specialties_with_rooms` - Specialties with available rooms
+- `v_upcoming_appointments` - Future appointments with complete details
+- `v_room_usage_stats` - Consultation room usage statistics
+
+## 🔍 Useful Queries
+
+```sql
+-- View hospitals with statistics
+SELECT * FROM v_hospitals_with_stats;
+
+-- View rooms by hospital
+SELECT h.name as hospital, COUNT(cr.id) as rooms
+FROM hospitals h
+LEFT JOIN consultation_rooms cr ON h.id = cr.hospital_id
+WHERE h.active = true AND cr.active = true
+GROUP BY h.id, h.name;
+
+-- View available specialties by hospital
+SELECT h.name as hospital, s.name as specialty, COUNT(DISTINCT cr.id) as rooms
+FROM hospitals h
+JOIN consultation_rooms cr ON h.id = cr.hospital_id
+JOIN specialty_consultation_rooms scr ON cr.id = scr.consultation_room_id
+JOIN specialties s ON scr.specialty_id = s.id
+WHERE h.active = true AND cr.active = true AND s.active = true
+GROUP BY h.id, h.name, s.id, s.name
+ORDER BY h.name, s.name;
+```
 
 ## 📞 Support
 
