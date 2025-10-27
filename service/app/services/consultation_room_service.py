@@ -45,6 +45,30 @@ class ConsultationRoomService:
         
         return self.room_repo.get_by_specialty(specialty_id)
     
+    def get_rooms_by_hospital_and_specialty(
+        self, 
+        hospital_id: int, 
+        specialty_id: int
+    ) -> List[ConsultationRoom]:
+        """Get consultation rooms for a specific hospital and specialty"""
+        # Verify specialty exists
+        specialty = self.specialty_repo.get_by_id(specialty_id)
+        if not specialty:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Specialty not found"
+            )
+        
+        rooms = self.room_repo.get_by_hospital_and_specialty(hospital_id, specialty_id)
+        
+        if not rooms:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No consultation rooms found for hospital {hospital_id} with specialty {specialty_id}"
+            )
+        
+        return rooms
+    
     def create_room(self, room_data: ConsultationRoomCreate) -> ConsultationRoom:
         """Create a new consultation room"""
         

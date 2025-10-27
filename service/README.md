@@ -241,20 +241,27 @@ Interactive documentation is available at:
 |--------|----------|-------------|---------------|
 | `GET` | `/consultation-rooms` | List all rooms | ✅ |
 | `GET` | `/consultation-rooms/{id}` | Get room details | ✅ |
+| `GET` | `/consultation-rooms/by-specialty/{specialty_id}` | Get rooms by specialty | ✅ |
+| `GET` | `/consultation-rooms/by-hospital-and-specialty` | **Get rooms by hospital & specialty** | ✅ |
 | `POST` | `/consultation-rooms` | Create room (admin) | ✅ |
 | `PATCH` | `/consultation-rooms/{id}` | Update room (admin) | ✅ |
+
+**Query Parameters for `/by-hospital-and-specialty`:**
+- `hospital_id` (required): Hospital ID
+- `specialty_id` (required): Specialty ID
 
 ### Available Slots
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `GET` | `/slots/available` | **Get available time slots** | ✅ |
+| `GET` | `/slots/available` | **Get all time slots (available/occupied)** | ✅ |
 
 **Query Parameters:**
 - `hospital_id` (required): Hospital ID
 - `specialty_id` (required): Specialty ID
 - `date` (required): Date (YYYY-MM-DD)
 - `shift` (required): "morning" or "afternoon"
+- `room_id` (optional): Filter by specific consultation room
 
 ### Appointments
 
@@ -283,13 +290,23 @@ GET /hospitals/{hospital_id}/specialties
 ```
 **Response:** Specialties offered by that hospital with room count
 
-### Step 3: Check Available Slots
+### Step 3: View Consultation Rooms (Optional)
 ```bash
-GET /slots/available?hospital_id=1&specialty_id=2&date=2024-11-15&shift=morning
+GET /consultation-rooms/by-hospital-and-specialty?hospital_id=1&specialty_id=2
 ```
-**Response:** Available time slots with consultation room details
+**Response:** List of consultation rooms for that hospital and specialty
 
-### Step 4: Book Appointment
+### Step 4: Check Time Slots
+```bash
+# Get all slots (available and occupied) for all rooms
+GET /slots/available?hospital_id=1&specialty_id=2&date=2024-11-15&shift=morning
+
+# Get slots for specific room (optional)
+GET /slots/available?hospital_id=1&specialty_id=2&date=2024-11-15&shift=morning&room_id=5
+```
+**Response:** All time slots with `available: true/false` indicating if slot is free or booked
+
+### Step 5: Book Appointment
 ```bash
 POST /appointments
 Body: {
@@ -389,14 +406,57 @@ Authorization: Bearer <your_token>
 ]
 ```
 
-### 5. Check available slots
+### 5. Get consultation rooms (optional)
 
 ```bash
-GET http://localhost:3000/slots/available?hospital_id=1&specialty_id=2&date=2024-11-18&shift=morning
+# Get all rooms for a hospital and specialty
+GET http://localhost:3000/consultation-rooms/by-hospital-and-specialty?hospital_id=1&specialty_id=2
 Authorization: Bearer <your_token>
 ```
 
 **Response:**
+```json
+[
+  {
+    "id": 4,
+    "room_number": "R-CARD-201",
+    "name": "Consultorio Cardiología 1",
+    "floor": 2,
+    "building": "A",
+    "description": "Consultorio equipado para cardiología",
+    "active": true,
+    "hospital_id": 1,
+    "created_at": "2024-10-26T10:00:00",
+    "updated_at": "2024-10-26T10:00:00"
+  },
+  {
+    "id": 5,
+    "room_number": "R-CARD-202",
+    "name": "Consultorio Cardiología 2",
+    "floor": 2,
+    "building": "A",
+    "description": "Consultorio equipado para cardiología",
+    "active": true,
+    "hospital_id": 1,
+    "created_at": "2024-10-26T10:00:00",
+    "updated_at": "2024-10-26T10:00:00"
+  }
+]
+```
+
+### 6. Check available slots
+
+```bash
+# Get all available slots for hospital and specialty
+GET http://localhost:3000/slots/available?hospital_id=1&specialty_id=2&date=2024-11-18&shift=morning
+Authorization: Bearer <your_token>
+
+# Get slots for a specific consultation room (optional)
+GET http://localhost:3000/slots/available?hospital_id=1&specialty_id=2&date=2024-11-18&shift=morning&room_id=4
+Authorization: Bearer <your_token>
+```
+
+**Response:** (Returns ALL slots with `available` field indicating status)
 ```json
 {
   "specialty_id": 2,
@@ -422,6 +482,16 @@ Authorization: Bearer <your_token>
         "room_number": "R-CARD-201",
         "name": "Consultorio Cardiología 1"
       },
+      "available": false
+    },
+    {
+      "start_time": "08:40:00",
+      "end_time": "09:00:00",
+      "consultation_room": {
+        "id": 5,
+        "room_number": "R-CARD-202",
+        "name": "Consultorio Cardiología 2"
+      },
       "available": true
     },
     ...
@@ -429,7 +499,7 @@ Authorization: Bearer <your_token>
 }
 ```
 
-### 6. Book an appointment
+### 7. Book an appointment
 
 ```bash
 POST http://localhost:3000/appointments

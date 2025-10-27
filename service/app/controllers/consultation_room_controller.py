@@ -47,6 +47,41 @@ async def get_rooms_by_specialty(
     return service.get_rooms_by_specialty(specialty_id)
 
 
+@router.get("/by-hospital-and-specialty", response_model=List[ConsultationRoomResponse])
+async def get_rooms_by_hospital_and_specialty(
+    hospital_id: int,
+    specialty_id: int,
+    db: Session = Depends(get_db),
+    current_patient: Patient = Depends(get_current_patient)
+):
+    """
+    Get consultation rooms for a specific hospital and specialty.
+    
+    **Use Case:**
+    This endpoint is useful for the booking flow where a patient:
+    1. Selects a hospital
+    2. Selects a specialty
+    3. Wants to see which consultation rooms are available
+    
+    **Parameters:**
+    - **hospital_id** (query): Hospital ID
+    - **specialty_id** (query): Specialty ID
+    
+    **Returns:**
+    List of consultation rooms that:
+    - Belong to the specified hospital
+    - Are assigned to the specified specialty
+    - Are active
+    
+    **Example:**
+    ```
+    GET /consultation-rooms/by-hospital-and-specialty?hospital_id=1&specialty_id=2
+    ```
+    """
+    service = ConsultationRoomService(db)
+    return service.get_rooms_by_hospital_and_specialty(hospital_id, specialty_id)
+
+
 @router.get("/{room_id}", response_model=ConsultationRoomWithSpecialtiesResponse)
 async def get_consultation_room(
     room_id: int,

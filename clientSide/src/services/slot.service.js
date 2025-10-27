@@ -14,17 +14,22 @@ export const slotService = {
    * @param {number} params.specialty_id - Specialty ID
    * @param {string} params.date - Date in YYYY-MM-DD format
    * @param {string} params.shift - Shift type (morning/afternoon)
+   * @param {number} params.room_id - Consultation room ID (optional)
    * @returns {Promise} API response with available slots
    */
-  getAvailableSlots: async ({ hospital_id, specialty_id, date, shift }) => {
-    const response = await apiClient.get(API_CONFIG.ENDPOINTS.SLOTS.AVAILABLE, {
-      params: {
-        hospital_id,
-        specialty_id,
-        date,
-        shift,
-      },
-    })
+  getAvailableSlots: async ({ hospital_id, specialty_id, date, shift, room_id }) => {
+    const params = {
+      hospital_id,
+      specialty_id,
+      date,
+      shift,
+    }
+    
+    if (room_id) {
+      params.room_id = room_id
+    }
+    
+    const response = await apiClient.get(API_CONFIG.ENDPOINTS.SLOTS.AVAILABLE, { params })
     return response.data
   },
 }

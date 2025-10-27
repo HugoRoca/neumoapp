@@ -21,7 +21,7 @@ const Dashboard = () => {
         {/* Header */}
         <div className="mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Bienvenido, {user?.firstname}
+            Bienvenido, {user?.first_name} {user?.last_name}
           </h1>
           <p className="text-gray-600 mt-2 text-sm sm:text-base">
             Tus próximas citas médicas agendadas
