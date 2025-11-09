@@ -41,7 +41,7 @@ class AppointmentRepository:
             and_(
                 Appointment.patient_id == patient_id,
                 Appointment.appointment_date >= from_date,
-                Appointment.status.in_([AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED])
+                Appointment.status.in_([AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED, AppointmentStatus.RESCHEDULED])
             )
         ).order_by(
             Appointment.appointment_date.asc(),

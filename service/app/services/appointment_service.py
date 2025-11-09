@@ -101,7 +101,7 @@ class AppointmentService:
             end_time=end_time,
             shift=shift_enum,
             reason=appointment_data.reason,
-            status=AppointmentStatus.PENDING
+            status=AppointmentStatus.CONFIRMED
         )
         
         return self.appointment_repo.create(new_appointment)
@@ -170,7 +170,7 @@ class AppointmentService:
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid status. Must be: pending, confirmed, cancelled, completed"
+                    detail="Invalid status. Must be: pending, confirmed, rescheduled, cancelled, completed"
                 )
         
         if appointment_update.observations is not None:
@@ -188,10 +188,10 @@ class AppointmentService:
         appointment = self.get_appointment_by_id(appointment_id, current_patient)
         
         # Only pending or confirmed appointments can be cancelled
-        if appointment.status not in [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED]:
+        if appointment.status not in [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED, AppointmentStatus.RESCHEDULED]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only pending or confirmed appointments can be cancelled"
+                detail="Only pending or confirmed or rescheduled appointments can be cancelled"
             )
         
         # Change status to cancelled (slot automatically becomes available)

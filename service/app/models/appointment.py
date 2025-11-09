@@ -8,6 +8,7 @@ from app.database.base import Base
 class AppointmentStatus(str, enum.Enum):
     PENDING = "pending"
     CONFIRMED = "confirmed"
+    RESCHEDULED = "rescheduled"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
 

@@ -95,7 +95,7 @@ async def update_appointment(
     """
     Update appointment status or observations
     
-    - **status**: pending, confirmed, cancelled, completed
+    - **status**: pending, confirmed, rescheduled, cancelled, completed
     - **observations**: Additional notes
     """
     service = AppointmentService(db)

@@ -182,7 +182,7 @@ CREATE TABLE appointments (
     -- Constraints
     CONSTRAINT check_shift_valid CHECK (shift IN ('morning', 'afternoon')),
     CONSTRAINT check_end_time_after_start_time CHECK (end_time > start_time),
-    CONSTRAINT check_status_valid CHECK (status IN ('pending', 'confirmed', 'cancelled', 'completed'))
+    CONSTRAINT check_status_valid CHECK (status IN ('pending', 'confirmed', 'rescheduled', 'cancelled', 'completed'))
 );
 
 CREATE INDEX idx_appointments_patient ON appointments(patient_id);

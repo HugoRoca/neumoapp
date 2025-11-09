@@ -58,7 +58,7 @@ class SlotService:
                 Appointment.specialty_id == specialty_id,
                 Appointment.appointment_date == check_date,
                 Appointment.shift == shift,
-                Appointment.status.in_([AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED])
+                Appointment.status.in_([AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED, AppointmentStatus.RESCHEDULED])
             )
         ).all()
         
@@ -234,7 +234,7 @@ class SlotService:
                 Appointment.start_time == start_time,
                 Appointment.shift == shift_enum,
                 Appointment.consultation_room_id == consultation_room_id,
-                Appointment.status.in_([AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED])
+                Appointment.status.in_([AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED, AppointmentStatus.RESCHEDULED])
             )
         ).first()
         

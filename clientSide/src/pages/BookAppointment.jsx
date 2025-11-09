@@ -1,27 +1,31 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import MainLayout from '@/components/Layout/MainLayout'
 import Card from '@/components/UI/Card'
 import Select from '@/components/UI/Select'
 import Input from '@/components/UI/Input'
 import Button from '@/components/UI/Button'
 import LoadingSpinner from '@/components/UI/LoadingSpinner'
+import ConfirmDialog from '@/components/UI/ConfirmDialog'
 import CalendarPicker from '@/components/Appointment/CalendarPicker'
 import TimeSlotPicker from '@/components/Appointment/TimeSlotPicker'
-import { Building2, Stethoscope, DoorOpen, Calendar, Clock, CheckCircle } from 'lucide-react'
+import { Building2, Stethoscope, DoorOpen, Calendar, Clock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import hospitalService from '@/services/hospital.service'
 import consultationRoomService from '@/services/consultationRoom.service'
 import slotService from '@/services/slot.service'
 import appointmentService from '@/services/appointment.service'
-import { formatDateForAPI, formatDate } from '@/utils/dateUtils'
+import { formatDateForAPI, formatDate, formatTime } from '@/utils/dateUtils'
 
 /**
  * Book Appointment Page
  * Multi-step form for booking medical appointments
+ * Supports rescheduling existing appointments
  */
 const BookAppointment = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const rescheduleAppointmentId = searchParams.get('reschedule')
   
   // Form data
   const [selectedHospital, setSelectedHospital] = useState('')
@@ -38,12 +42,49 @@ const BookAppointment = () => {
   const [rooms, setRooms] = useState([])
   const [slots, setSlots] = useState([])
   
+  // Reschedule state
+  const [originalAppointment, setOriginalAppointment] = useState(null)
+  const [loadingOriginalAppointment, setLoadingOriginalAppointment] = useState(false)
+  
+  // Confirmation dialog state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  
   // Loading states
   const [loadingHospitals, setLoadingHospitals] = useState(true)
   const [loadingSpecialties, setLoadingSpecialties] = useState(false)
   const [loadingRooms, setLoadingRooms] = useState(false)
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Load original appointment if rescheduling
+  useEffect(() => {
+    if (rescheduleAppointmentId) {
+      const fetchOriginalAppointment = async () => {
+        try {
+          setLoadingOriginalAppointment(true)
+          const appointment = await appointmentService.getAppointmentById(rescheduleAppointmentId)
+          setOriginalAppointment(appointment)
+          
+          // Pre-fill form with original appointment data
+          if (appointment.consultation_room?.hospital_id) {
+            setSelectedHospital(appointment.consultation_room.hospital_id.toString())
+          }
+          if (appointment.specialty_id) {
+            setSelectedSpecialty(appointment.specialty_id.toString())
+          }
+          if (appointment.reason) {
+            setReason(appointment.reason)
+          }
+        } catch (error) {
+          toast.error('Error al cargar la cita original')
+          navigate('/dashboard')
+        } finally {
+          setLoadingOriginalAppointment(false)
+        }
+      }
+      fetchOriginalAppointment()
+    }
+  }, [rescheduleAppointmentId, navigate])
 
   // Load hospitals on mount
   useEffect(() => {
@@ -163,10 +204,18 @@ const BookAppointment = () => {
       return
     }
 
+    // Show confirmation dialog
+    setShowConfirmDialog(true)
+  }
+
+  const handleConfirmSubmit = async () => {
+    setShowConfirmDialog(false)
+    
     try {
       setSubmitting(true)
       
-      await appointmentService.createAppointment({
+      // Create new appointment
+      const newAppointment = await appointmentService.createAppointment({
         specialty_id: parseInt(selectedSpecialty),
         consultation_room_id: selectedSlot.consultation_room.id,
         appointment_date: formatDateForAPI(selectedDate),
@@ -175,8 +224,29 @@ const BookAppointment = () => {
         reason: reason.trim(),
       })
       
-      toast.success('¡Cita agendada exitosamente!')
-      navigate('/mis-citas')
+      // If rescheduling, update new appointment status and delete original
+      if (rescheduleAppointmentId && originalAppointment) {
+        try {
+          // Update NEW appointment status to "rescheduled"
+          await appointmentService.updateAppointment(newAppointment.id, {
+            status: 'rescheduled',
+            observations: `Cita reprogramada. Cita original ID: ${rescheduleAppointmentId} fue eliminada.`
+          })
+          
+          // Delete the original appointment
+          await appointmentService.cancelAppointment(rescheduleAppointmentId)
+          
+          toast.success('¡Cita reprogramada exitosamente!')
+        } catch (updateError) {
+          // Even if update/delete fails, the new appointment was created
+          console.error('Error updating/deleting appointments:', updateError)
+          toast.warning('¡Nueva cita creada! (Nota: Error al procesar la cita anterior)')
+        }
+      } else {
+        toast.success('¡Cita agendada exitosamente!')
+      }
+      
+      navigate('/dashboard')
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al agendar la cita')
     } finally {
@@ -200,11 +270,70 @@ const BookAppointment = () => {
     <MainLayout>
       <div className="px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Agendar Cita</h1>
+          <div className="flex items-center space-x-3 mb-2">
+            {rescheduleAppointmentId && (
+              <RefreshCw className="w-6 h-6 text-primary-600" />
+            )}
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              {rescheduleAppointmentId ? 'Reagendar Cita' : 'Agendar Cita'}
+            </h1>
+          </div>
           <p className="text-gray-600 mt-2 text-sm sm:text-base">
-            Completa los siguientes pasos para agendar tu cita médica
+            {rescheduleAppointmentId 
+              ? 'Selecciona la nueva fecha y horario para tu cita'
+              : 'Completa los siguientes pasos para agendar tu cita médica'
+            }
           </p>
         </div>
+
+        {/* Original Appointment Info (Reschedule Mode) */}
+        {rescheduleAppointmentId && (
+          <>
+            {loadingOriginalAppointment ? (
+              <Card className="max-w-4xl mx-auto mb-6">
+                <LoadingSpinner size="sm" message="Cargando información de la cita original..." />
+              </Card>
+            ) : originalAppointment ? (
+              <Card className="max-w-4xl mx-auto mb-6 border-2 border-yellow-200 bg-yellow-50">
+                <div className="flex items-start space-x-3">
+                  <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-yellow-900 mb-2">
+                      Estás reprogramando una cita existente
+                    </h3>
+                    <div className="bg-white rounded-lg p-3 space-y-2 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-gray-500">Especialidad:</span>{' '}
+                          <span className="font-medium">{originalAppointment.specialty?.name || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Fecha actual:</span>{' '}
+                          <span className="font-medium">{formatDate(originalAppointment.appointment_date)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Hora actual:</span>{' '}
+                          <span className="font-medium">
+                            {formatTime(originalAppointment.start_time)} - {formatTime(originalAppointment.end_time)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Consultorio:</span>{' '}
+                          <span className="font-medium">
+                            {originalAppointment.consultation_room?.name || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-600 pt-2 border-t border-gray-100">
+                        La cita original será cancelada y marcada como reprogramada una vez que confirmes la nueva cita.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ) : null}
+          </>
+        )}
 
         {loadingHospitals ? (
           <LoadingSpinner message="Cargando..." />
@@ -351,9 +480,11 @@ const BookAppointment = () => {
                       onSelectDate={setSelectedDate}
                     />
                     {selectedDate && (
-                      <p className="mt-3 text-sm text-gray-600">
-                        Fecha seleccionada: <span className="font-semibold">{formatDate(selectedDate)}</span>
-                      </p>
+                      <div className="mt-3 space-y-1">
+                        <p className="text-sm text-gray-600">
+                          Fecha seleccionada: <span className="font-semibold">{formatDate(selectedDate)}</span>
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -426,12 +557,28 @@ const BookAppointment = () => {
                   loading={submitting}
                   disabled={submitting}
                 >
-                  Confirmar Cita
+                  {rescheduleAppointmentId ? 'Confirmar Reagendamiento' : 'Confirmar Cita'}
                 </Button>
               </div>
             )}
           </form>
         )}
+
+        {/* Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={showConfirmDialog}
+          onClose={() => setShowConfirmDialog(false)}
+          onConfirm={handleConfirmSubmit}
+          title={rescheduleAppointmentId ? 'Confirmar Reagendamiento' : 'Confirmar Cita'}
+          message={
+            rescheduleAppointmentId
+              ? `¿Estás seguro de que deseas reagendar tu cita?\n\nLa cita original será eliminada y se creará una nueva cita con la fecha y horario seleccionados.`
+              : `¿Estás seguro de que deseas agendar esta cita?\n\nFecha: ${selectedDate ? formatDate(selectedDate) : ''}\nHora: ${selectedSlot ? `${formatTime(selectedSlot.start_time)} - ${formatTime(selectedSlot.end_time)}` : ''}\nEspecialidad: ${specialties.find(s => s.id === parseInt(selectedSpecialty))?.name || ''}`
+          }
+          confirmText={rescheduleAppointmentId ? 'Sí, Reagendar' : 'Sí, Confirmar'}
+          cancelText="Cancelar"
+          variant="primary"
+        />
       </div>
     </MainLayout>
   )

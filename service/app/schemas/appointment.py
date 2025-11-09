@@ -49,7 +49,7 @@ class AppointmentCreate(AppointmentBase):
 
 
 class AppointmentUpdate(BaseModel):
-    status: Optional[str] = Field(None, description="Status: pending, confirmed, cancelled, completed")
+    status: Optional[str] = Field(None, description="Status: pending, confirmed, rescheduled, cancelled, completed")
     observations: Optional[str] = Field(None, max_length=500)
 
 

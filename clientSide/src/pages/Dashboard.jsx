@@ -1,19 +1,48 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useUpcomingAppointments } from '@/hooks/useUpcomingAppointments'
 import MainLayout from '@/components/Layout/MainLayout'
 import Card from '@/components/UI/Card'
 import LoadingSpinner from '@/components/UI/LoadingSpinner'
-import { Calendar, Clock, User, MapPin, AlertCircle } from 'lucide-react'
+import Button from '@/components/UI/Button'
+import { Calendar, Clock, User, MapPin, AlertCircle, X, RefreshCw } from 'lucide-react'
 import { formatDate, formatTime } from '@/utils/dateUtils'
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_COLORS } from '@/config/constants'
+import appointmentService from '@/services/appointment.service'
+import { toast } from 'sonner'
 
 /**
  * Dashboard Page
  * Shows user's upcoming appointments
  */
 const Dashboard = () => {
+  const navigate = useNavigate()
   const { user } = useAuth()
-  const { appointments, loading, error } = useUpcomingAppointments(5)
+  const { appointments, loading, error, refetch } = useUpcomingAppointments(5)
+  const [cancellingId, setCancellingId] = useState(null)
+
+  const handleCancel = async (appointmentId) => {
+    if (!window.confirm('¿Estás seguro de que deseas cancelar esta cita?')) {
+      return
+    }
+
+    try {
+      setCancellingId(appointmentId)
+      await appointmentService.cancelAppointment(appointmentId)
+      toast.success('Cita cancelada exitosamente')
+      refetch() // Recargar la lista de citas
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al cancelar la cita')
+    } finally {
+      setCancellingId(null)
+    }
+  }
+
+  const handleReschedule = (appointment) => {
+    // Navegar a la página de agendar cita con el ID de la cita a reagendar
+    navigate(`/agendar-cita?reschedule=${appointment.id}`)
+  }
 
   return (
     <MainLayout>
@@ -21,7 +50,7 @@ const Dashboard = () => {
         {/* Header */}
         <div className="mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Bienvenido, {user?.first_name} {user?.last_name}
+            Bienvenido, {user?.firstname || user?.first_name}
           </h1>
           <p className="text-gray-600 mt-2 text-sm sm:text-base">
             Tus próximas citas médicas agendadas
@@ -175,6 +204,32 @@ const Dashboard = () => {
                     <p className="text-sm text-gray-700">{appointment.observations}</p>
                   </div>
                 )}
+
+                {/* Action Buttons */}
+                <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col sm:flex-row gap-2 sm:gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleReschedule(appointment)}
+                    className="flex-1 sm:flex-none"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Reagendar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleCancel(appointment.id)}
+                    loading={cancellingId === appointment.id}
+                    disabled={cancellingId === appointment.id || appointment.status === 'cancelled'}
+                    className="flex-1 sm:flex-none"
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Anular
+                  </Button>
+                </div>
               </Card>
             ))}
           </div>
