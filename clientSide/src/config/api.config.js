@@ -12,6 +12,7 @@ export const API_CONFIG = {
       REGISTER: '/auth/register',
       LOGIN: '/auth/login',
       ME: '/auth/me',
+      REFRESH: '/auth/refresh',
     },
     // Patients
     PATIENTS: {

@@ -6,6 +6,7 @@ export const APP_NAME = import.meta.env.VITE_APP_NAME || 'Neumoapp'
 export const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0'
 
 export const TOKEN_KEY = 'neumoapp_token'
+export const REFRESH_TOKEN_KEY = 'neumoapp_refresh_token'
 export const USER_KEY = 'neumoapp_user'
 
 export const APPOINTMENT_STATUS = {

@@ -39,6 +39,18 @@ export const authService = {
     const response = await apiClient.get(API_CONFIG.ENDPOINTS.AUTH.ME)
     return response.data
   },
+
+  /**
+   * Refresh the access token
+   * @param {string} refreshToken - The refresh token
+   * @returns {Promise} API response with new access token
+   */
+  refreshToken: async (refreshToken) => {
+    const response = await apiClient.post(API_CONFIG.ENDPOINTS.AUTH.REFRESH, {
+      refresh_token: refreshToken,
+    })
+    return response.data
+  },
 }
 
 export default authService

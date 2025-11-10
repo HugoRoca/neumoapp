@@ -1,5 +1,5 @@
 import { createContext, useState, useEffect, useContext, useCallback } from 'react'
-import { TOKEN_KEY, USER_KEY } from '@/config/constants'
+import { TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY } from '@/config/constants'
 import authService from '@/services/auth.service'
 
 const AuthContext = createContext(null)
@@ -14,6 +14,7 @@ export const AuthProvider = ({ children }) => {
     setUser(null)
     setToken(null)
     localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
   }, [])
 
@@ -47,11 +48,12 @@ export const AuthProvider = ({ children }) => {
   const login = async (document_number, password) => {
     try {
       const response = await authService.login(document_number, password)
-      const { access_token } = response
+      const { access_token, refresh_token } = response
       
-      // Store token
+      // Store tokens
       setToken(access_token)
       localStorage.setItem(TOKEN_KEY, access_token)
+      localStorage.setItem(REFRESH_TOKEN_KEY, refresh_token)
       
       // Get and store user profile
       const profile = await authService.getProfile()
@@ -92,6 +94,7 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (!context) {

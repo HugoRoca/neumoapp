@@ -26,7 +26,6 @@ import { isHoliday } from '@/config/holidays'
  * @param {Function} onSelectDate - Callback when date is selected
  * @param {Date} minDate - Minimum selectable date
  */
-// eslint-disable-next-line react/prop-types
 const CalendarPicker = ({ selectedDate, onSelectDate, minDate = new Date() }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date())
 

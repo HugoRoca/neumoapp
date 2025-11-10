@@ -1,37 +1,27 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import specialtyService from '@/services/specialty.service'
 
 /**
- * Custom hook to fetch specialties
+ * Custom hook to fetch specialties using React Query
  * @returns {Object} { specialties, loading, error, refetch }
  */
 export const useSpecialties = () => {
-  const [specialties, setSpecialties] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  const fetchSpecialties = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const data = await specialtyService.getSpecialties()
-      setSpecialties(data)
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Error al cargar las especialidades')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchSpecialties()
-  }, [fetchSpecialties])
+  const {
+    data: specialties = [],
+    isLoading: loading,
+    isError: hasError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['specialties'],
+    queryFn: () => specialtyService.getSpecialties(),
+  })
 
   return {
     specialties,
     loading,
-    error,
-    refetch: fetchSpecialties,
+    error: hasError ? error.response?.data?.detail || error.message : null,
+    refetch,
   }
 }
 
