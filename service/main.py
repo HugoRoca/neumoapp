@@ -11,7 +11,8 @@ from app.controllers import (
     hospital_router,
     consultation_room_router,
     slot_router,
-    appointment_router
+    appointment_router,
+    chat_router,
 )
 
 # Create database tables
@@ -43,6 +44,7 @@ app.include_router(hospital_router)
 app.include_router(consultation_room_router)
 app.include_router(slot_router)
 app.include_router(appointment_router)
+app.include_router(chat_router)
 
 
 @app.get("/", tags=["Root"])

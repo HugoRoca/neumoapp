@@ -8,11 +8,23 @@ import { API_CONFIG } from '@/config/api.config'
 
 export const appointmentService = {
   /**
-   * Get my appointments (dashboard view)
-   * @returns {Promise} API response with appointments
+   * Listado paginado de mis citas (filtros opcionales).
+   * @param {Object} [params]
+   * @param {number} [params.skip]
+   * @param {number} [params.limit]
+   * @param {string} [params.status]
+   * @param {string} [params.date_from] - YYYY-MM-DD
+   * @param {string} [params.date_to] - YYYY-MM-DD
+   * @param {string} [params.search]
+   * @returns {Promise<{ items, total, skip, limit }>}
    */
-  getMyAppointments: async () => {
-    const response = await apiClient.get(API_CONFIG.ENDPOINTS.APPOINTMENTS.MY_APPOINTMENTS)
+  getMyAppointments: async (params = {}) => {
+    const clean = Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    )
+    const response = await apiClient.get(API_CONFIG.ENDPOINTS.APPOINTMENTS.MY_APPOINTMENTS, {
+      params: clean,
+    })
     return response.data
   },
 

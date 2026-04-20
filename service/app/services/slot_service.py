@@ -1,14 +1,23 @@
-from typing import List
+from typing import List, Optional, Tuple
 from datetime import date, time, datetime, timedelta
+from zoneinfo import ZoneInfo
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
+from app.core.config import settings
 from app.models.appointment import Appointment, AppointmentStatus, ShiftType
 from app.repositories.specialty_repository import SpecialtyRepository
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.consultation_room_repository import ConsultationRoomRepository
 from app.schemas.appointment import TimeSlot, AvailableSlotsResponse, ConsultationRoomSimple
+
+
+def _app_local_today_now() -> Tuple[date, time]:
+    """Misma zona que el chat (APP_TIMEZONE); evita desfasar 'hoy' vs hora actual si el servidor está en UTC."""
+    tz = ZoneInfo(settings.APP_TIMEZONE or "America/Lima")
+    now = datetime.now(tz)
+    return now.date(), now.time()
 
 
 class SlotService:
@@ -98,8 +107,10 @@ class SlotService:
                 detail="Specialty not found"
             )
         
-        # Validar que la fecha no sea pasada
-        if check_date < date.today():
+        today_local, now_local_time = _app_local_today_now()
+
+        # Validar que la fecha no sea pasada (calendario según APP_TIMEZONE)
+        if check_date < today_local:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Date cannot be in the past"
@@ -132,10 +143,9 @@ class SlotService:
         # Generar todos los slots posibles
         time_slots = self._generate_time_slots(start_time, end_time)
         
-        # Si es hoy, filtrar horarios pasados
-        if check_date == date.today():
-            current_time = datetime.now().time()
-            time_slots = [t for t in time_slots if t > current_time]
+        # Si es hoy, filtrar horarios pasados (hora actual en APP_TIMEZONE)
+        if check_date == today_local:
+            time_slots = [t for t in time_slots if t > now_local_time]
         
         # Obtener consultorios asignados a esta especialidad en este hospital
         all_rooms = self.room_repo.get_by_specialty(specialty_id)
@@ -201,7 +211,8 @@ class SlotService:
         appointment_date: date,
         start_time: time,
         shift: str,
-        consultation_room_id: int
+        consultation_room_id: int,
+        exclude_appointment_id: Optional[int] = None,
     ) -> bool:
         """
         Valida que un slot específico esté disponible antes de crear la cita.
@@ -213,12 +224,14 @@ class SlotService:
         if not self._is_weekday(appointment_date):
             return False
         
+        today_local, now_local_time = _app_local_today_now()
+
         # Validar que no sea fecha pasada
-        if appointment_date < date.today():
+        if appointment_date < today_local:
             return False
-        
+
         # Si es hoy, validar que no sea hora pasada
-        if appointment_date == date.today() and start_time <= datetime.now().time():
+        if appointment_date == today_local and start_time <= now_local_time:
             return False
         
         try:
@@ -226,8 +239,8 @@ class SlotService:
         except ValueError:
             return False
         
-        # Verificar si ya existe una cita en ese slot
-        existing = self.db.query(Appointment).filter(
+        # Verificar si ya existe una cita en ese slot (opcionalmente ignorando la cita que se está moviendo)
+        q = self.db.query(Appointment).filter(
             and_(
                 Appointment.specialty_id == specialty_id,
                 Appointment.appointment_date == appointment_date,
@@ -236,7 +249,78 @@ class SlotService:
                 Appointment.consultation_room_id == consultation_room_id,
                 Appointment.status.in_([AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED, AppointmentStatus.RESCHEDULED])
             )
-        ).first()
+        )
+        if exclude_appointment_id is not None:
+            q = q.filter(Appointment.id != exclude_appointment_id)
+        existing = q.first()
         
         return existing is None
+
+    def collect_available_times_for_room(
+        self,
+        hospital_id: int,
+        specialty_id: int,
+        consultation_room_id: int,
+        check_date: date,
+        shift_hint: Optional[str] = None,
+    ) -> List[time]:
+        """
+        Todos los horarios de inicio disponibles (mañana + tarde) para un consultorio concreto.
+        shift_hint: 'morning' | 'afternoon' | None (ambos).
+        """
+        out: List[time] = []
+        for shift in ("morning", "afternoon"):
+            if shift_hint == "morning" and shift == "afternoon":
+                continue
+            if shift_hint == "afternoon" and shift == "morning":
+                continue
+            try:
+                resp = self.get_available_slots(
+                    hospital_id=hospital_id,
+                    specialty_id=specialty_id,
+                    check_date=check_date,
+                    shift=shift,
+                    room_id=consultation_room_id,
+                )
+            except HTTPException:
+                continue
+            for slot in resp.slots:
+                if (
+                    slot.available
+                    and slot.consultation_room.id == consultation_room_id
+                    and slot.start_time not in out
+                ):
+                    out.append(slot.start_time)
+        return sorted(out)
+
+    def first_available_dates_for_room(
+        self,
+        hospital_id: int,
+        specialty_id: int,
+        consultation_room_id: int,
+        start_from: date,
+        *,
+        max_calendar_days: int = 45,
+        max_results: int = 12,
+        shift_hint: Optional[str] = None,
+    ) -> List[date]:
+        """
+        Primeros días hábiles (desde start_from) con al menos un hueco libre en ese consultorio.
+        """
+        found: List[date] = []
+        d = start_from
+        end_limit = start_from + timedelta(days=max_calendar_days)
+        while d <= end_limit and len(found) < max_results:
+            if self._is_weekday(d) and d >= _app_local_today_now()[0]:
+                times = self.collect_available_times_for_room(
+                    hospital_id,
+                    specialty_id,
+                    consultation_room_id,
+                    d,
+                    shift_hint=shift_hint,
+                )
+                if times:
+                    found.append(d)
+            d += timedelta(days=1)
+        return found
 

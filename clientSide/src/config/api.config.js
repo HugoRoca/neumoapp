@@ -48,6 +48,10 @@ export const API_CONFIG = {
       MY_APPOINTMENTS: '/appointments/my-appointments',
       UPCOMING: '/appointments/upcoming',
     },
+    CHAT: {
+      // FastAPI concatena prefix + "/" → ruta efectiva /chat/
+      BASE: '/chat/',
+    },
   },
 }
 

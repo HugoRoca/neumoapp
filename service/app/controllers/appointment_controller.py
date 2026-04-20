@@ -1,9 +1,16 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+from datetime import date
 
 from app.database.base import get_db
-from app.schemas.appointment import AppointmentCreate, AppointmentResponse, AppointmentUpdate, AppointmentDetailResponse
+from app.schemas.appointment import (
+    AppointmentCreate,
+    AppointmentResponse,
+    AppointmentUpdate,
+    AppointmentDetailResponse,
+    MyAppointmentsPage,
+)
 from app.services.appointment_service import AppointmentService
 from app.core.dependencies import get_current_patient
 from app.models.patient import Patient
@@ -39,21 +46,25 @@ async def book_appointment(
     return service.book_appointment(appointment, current_patient)
 
 
-@router.get("/my-appointments", response_model=List[AppointmentDetailResponse])
+@router.get("/my-appointments", response_model=MyAppointmentsPage)
 async def get_my_appointments(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(12, ge=1, le=100),
+    status: Optional[str] = Query(None, description="Filtrar por estado de la cita"),
+    date_from: Optional[date] = Query(None, description="Fecha desde (YYYY-MM-DD)"),
+    date_to: Optional[date] = Query(None, description="Fecha hasta (YYYY-MM-DD)"),
+    search: Optional[str] = Query(None, max_length=200, description="Buscar en motivo, especialidad o consultorio"),
     db: Session = Depends(get_db),
-    current_patient: Patient = Depends(get_current_patient)
+    current_patient: Patient = Depends(get_current_patient),
 ):
     """
-    Get all appointments for authenticated patient (Dashboard)
-    
-    Returns appointments ordered by date and time (most recent first)
-    Includes full details: patient, specialty, date, time, room, status
+    Citas del paciente con paginación y filtros opcionales (estado, rango de fechas, texto).
     """
     service = AppointmentService(db)
-    return service.get_my_appointments(current_patient, skip, limit)
+    items, total = service.get_my_appointments(
+        current_patient, skip, limit, status, date_from, date_to, search
+    )
+    return MyAppointmentsPage(items=items, total=total, skip=skip, limit=limit)
 
 
 @router.get("/upcoming", response_model=List[AppointmentDetailResponse])

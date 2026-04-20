@@ -10,6 +10,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import BookAppointment from './pages/BookAppointment'
 import MyAppointments from './pages/MyAppointments'
+import ChatAssistant from './pages/ChatAssistant'
 
 const AppContent = () => {
   const { logout } = useAuth()
@@ -35,18 +36,17 @@ const AppContent = () => {
         <Route path="/login" element={<Login />} />
         
         {/* Protected Routes */}
-        <Route 
+        <Route
           element={
             <ProtectedRoute>
-              <MainLayout>
-                <Outlet />
-              </MainLayout>
+              <MainLayout />
             </ProtectedRoute>
           }
         >
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/agendar-cita" element={<BookAppointment />} />
           <Route path="/mis-citas" element={<MyAppointments />} />
+          <Route path="/asistente" element={<ChatAssistant />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Route>
         

@@ -5,6 +5,7 @@ from app.controllers.hospital_controller import router as hospital_router
 from app.controllers.consultation_room_controller import router as consultation_room_router
 from app.controllers.slot_controller import router as slot_router
 from app.controllers.appointment_controller import router as appointment_router
+from app.controllers.chat_controller import router as chat_router
 
 __all__ = [
     "auth_router",
@@ -14,4 +15,5 @@ __all__ = [
     "consultation_room_router",
     "slot_router",
     "appointment_router",
+    "chat_router",
 ]

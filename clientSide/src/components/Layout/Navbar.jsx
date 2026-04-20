@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { Calendar, Home, List, LogOut, User, Menu, X } from 'lucide-react'
+import { Calendar, Home, List, LogOut, User, Menu, X, MessageCircle, Sparkles } from 'lucide-react'
 
 /**
  * Navigation Bar Component
@@ -22,6 +22,7 @@ const Navbar = () => {
     { path: '/dashboard', icon: Home, label: 'Dashboard' },
     { path: '/agendar-cita', icon: Calendar, label: 'Agendar Cita' },
     { path: '/mis-citas', icon: List, label: 'Mis Citas' },
+    { path: '/asistente', icon: MessageCircle, label: 'Asistente' },
   ]
 
   const closeMobileMenu = () => {
@@ -37,10 +38,27 @@ const Navbar = () => {
             <div className="flex-shrink-0 flex items-center">
               <h1 className="text-xl sm:text-2xl font-bold text-primary-600">Neumoapp</h1>
             </div>
-            <div className="hidden md:ml-6 md:flex md:space-x-4 lg:space-x-8">
+            <div className="hidden md:ml-6 md:flex md:items-center md:space-x-3 lg:space-x-6">
               {navItems.map((item) => {
                 const Icon = item.icon
                 const isActive = location.pathname === item.path
+                const isAssistant = item.path === '/asistente'
+                if (isAssistant) {
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`group inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-primary-600 via-sky-600 to-cyan-600 text-white ring-2 ring-primary-300/80 ring-offset-2'
+                          : 'bg-gradient-to-r from-sky-500 to-primary-600 text-white hover:shadow-lg hover:brightness-105'
+                      }`}
+                    >
+                      <Sparkles className="h-4 w-4 shrink-0 opacity-90 group-hover:animate-pulse" aria-hidden />
+                      {item.label}
+                    </Link>
+                  )
+                }
                 return (
                   <Link
                     key={item.path}
@@ -104,6 +122,24 @@ const Navbar = () => {
             {navItems.map((item) => {
               const Icon = item.icon
               const isActive = location.pathname === item.path
+              const isAssistant = item.path === '/asistente'
+              if (isAssistant) {
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={closeMobileMenu}
+                    className={`mx-3 my-2 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-base font-semibold shadow-md transition-colors ${
+                      isActive
+                        ? 'bg-gradient-to-r from-primary-600 to-cyan-600 text-white'
+                        : 'bg-gradient-to-r from-sky-500 to-primary-600 text-white'
+                    }`}
+                  >
+                    <Sparkles className="h-5 w-5 shrink-0" aria-hidden />
+                    {item.label}
+                  </Link>
+                )
+              }
               return (
                 <Link
                   key={item.path}

@@ -1,5 +1,5 @@
-from typing import List
-from datetime import date, datetime, timedelta
+from typing import List, Optional, Tuple
+from datetime import date, datetime, time, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -68,7 +68,8 @@ class AppointmentService:
             appointment_date=appointment_data.appointment_date,
             start_time=appointment_data.start_time,
             shift=appointment_data.shift,
-            consultation_room_id=appointment_data.consultation_room_id
+            consultation_room_id=appointment_data.consultation_room_id,
+            exclude_appointment_id=None,
         )
         
         if not is_available:
@@ -107,13 +108,25 @@ class AppointmentService:
         return self.appointment_repo.create(new_appointment)
     
     def get_my_appointments(
-        self, 
-        current_patient: Patient, 
-        skip: int = 0, 
-        limit: int = 100
-    ) -> List[Appointment]:
-        """Get all appointments for current patient"""
-        return self.appointment_repo.get_by_patient(current_patient.id, skip, limit)
+        self,
+        current_patient: Patient,
+        skip: int = 0,
+        limit: int = 100,
+        status: Optional[str] = None,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        search: Optional[str] = None,
+    ) -> Tuple[List[Appointment], int]:
+        """Citas del paciente con filtros opcionales y total (paginación)."""
+        return self.appointment_repo.get_by_patient_filtered(
+            current_patient.id,
+            skip,
+            limit,
+            status,
+            date_from,
+            date_to,
+            search,
+        )
     
     def get_upcoming_appointments(
         self, 
@@ -176,6 +189,63 @@ class AppointmentService:
         if appointment_update.observations is not None:
             appointment.observations = appointment_update.observations
         
+        return self.appointment_repo.update(appointment)
+    
+    def reschedule_appointment_datetime(
+        self,
+        appointment_id: int,
+        new_date: date,
+        new_start_time: time,
+        current_patient: Patient,
+    ) -> Appointment:
+        """
+        Cambia fecha y/u hora de una cita existente del paciente, validando disponibilidad
+        en el mismo consultorio y especialidad (misma lógica de slots que al agendar).
+        """
+        appointment = self.get_appointment_by_id(appointment_id, current_patient)
+        if appointment.status not in [
+            AppointmentStatus.PENDING,
+            AppointmentStatus.CONFIRMED,
+            AppointmentStatus.RESCHEDULED,
+        ]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only pending, confirmed or rescheduled appointments can be rescheduled",
+            )
+
+        # Turno según franjas del sistema (mañana 08:00–13:00, tarde 14:00–18:00)
+        if time(8, 0) <= new_start_time < time(13, 0):
+            shift_str = ShiftType.MORNING.value
+        elif time(14, 0) <= new_start_time < time(18, 0):
+            shift_str = ShiftType.AFTERNOON.value
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Time must fall in morning (08:00–12:59) or afternoon (14:00–17:59) slots",
+            )
+
+        ok = self.slot_service.validate_slot_availability(
+            specialty_id=appointment.specialty_id,
+            appointment_date=new_date,
+            start_time=new_start_time,
+            shift=shift_str,
+            consultation_room_id=appointment.consultation_room_id,
+            exclude_appointment_id=appointment_id,
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The requested slot is not available for this consultation room",
+            )
+
+        start_dt = datetime.combine(date.today(), new_start_time)
+        end_dt = start_dt + timedelta(minutes=20)
+        appointment.appointment_date = new_date
+        appointment.start_time = new_start_time
+        appointment.end_time = end_dt.time()
+        appointment.shift = shift_str
+        if appointment.status == AppointmentStatus.PENDING:
+            appointment.status = AppointmentStatus.CONFIRMED
         return self.appointment_repo.update(appointment)
     
     def cancel_appointment(

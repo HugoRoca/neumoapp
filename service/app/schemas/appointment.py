@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, date, time
 from app.schemas.patient import PatientResponse
 from app.schemas.specialty import SpecialtyResponse
@@ -79,4 +79,13 @@ class AppointmentDetailResponse(AppointmentResponse):
 
     class Config:
         from_attributes = True
+
+
+class MyAppointmentsPage(BaseModel):
+    """Listado paginado de citas del paciente autenticado."""
+
+    items: List[AppointmentDetailResponse]
+    total: int
+    skip: int
+    limit: int
 

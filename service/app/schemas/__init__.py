@@ -26,6 +26,7 @@ from app.schemas.appointment import (
     AppointmentResponse, 
     AppointmentDetailResponse,
     AppointmentUpdate,
+    MyAppointmentsPage,
     TimeSlot,
     AvailableSlotsResponse,
     ConsultationRoomSimple
@@ -56,6 +57,7 @@ __all__ = [
     "AppointmentResponse",
     "AppointmentDetailResponse",
     "AppointmentUpdate",
+    "MyAppointmentsPage",
     "TimeSlot",
     "AvailableSlotsResponse",
     "ConsultationRoomSimple",

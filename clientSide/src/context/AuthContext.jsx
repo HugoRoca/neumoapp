@@ -18,6 +18,13 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem(USER_KEY)
   }, [])
 
+  const refreshProfile = useCallback(async () => {
+    const profile = await authService.getProfile()
+    setUser(profile)
+    localStorage.setItem(USER_KEY, JSON.stringify(profile))
+    return profile
+  }, [])
+
   // Initialize auth state from localStorage
   useEffect(() => {
     const initAuth = async () => {
@@ -30,9 +37,7 @@ export const AuthProvider = ({ children }) => {
         
         // Verify token is still valid
         try {
-          const profile = await authService.getProfile()
-          setUser(profile)
-          localStorage.setItem(USER_KEY, JSON.stringify(profile))
+          await refreshProfile()
         } catch (error) {
           // Token is invalid, clear auth
           logout()
@@ -43,7 +48,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     initAuth()
-  }, [logout])
+  }, [logout, refreshProfile])
 
   const login = async (document_number, password) => {
     try {
@@ -55,10 +60,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem(TOKEN_KEY, access_token)
       localStorage.setItem(REFRESH_TOKEN_KEY, refresh_token)
       
-      // Get and store user profile
-      const profile = await authService.getProfile()
-      setUser(profile)
-      localStorage.setItem(USER_KEY, JSON.stringify(profile))
+      await refreshProfile()
       
       return { success: true }
     } catch (error) {
@@ -88,6 +90,7 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     register,
+    refreshProfile,
     isAuthenticated: !!token,
   }
 

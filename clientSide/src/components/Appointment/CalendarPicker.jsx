@@ -25,8 +25,9 @@ import { isHoliday } from '@/config/holidays'
  * @param {Date} selectedDate - Currently selected date
  * @param {Function} onSelectDate - Callback when date is selected
  * @param {Date} minDate - Minimum selectable date
+ * @param {boolean} compact - Menos padding y leyenda reducida (flujo agendamiento)
  */
-const CalendarPicker = ({ selectedDate, onSelectDate, minDate = new Date() }) => {
+const CalendarPicker = ({ selectedDate, onSelectDate, minDate = new Date(), compact = false }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date())
 
   const monthStart = startOfMonth(currentMonth)
@@ -67,37 +68,41 @@ const CalendarPicker = ({ selectedDate, onSelectDate, minDate = new Date() }) =>
     }
   }
 
+  const shell = compact
+    ? 'bg-white rounded-xl border border-gray-200 p-2 max-w-[min(100%,20rem)]'
+    : 'bg-white rounded-lg border border-gray-200 p-3 max-w-md mx-auto'
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-3 max-w-md mx-auto">
+    <div className={shell}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className={`flex items-center justify-between ${compact ? 'mb-2' : 'mb-3'}`}>
         <button
           type="button"
           onClick={goToPreviousMonth}
-          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+          className={`p-1.5 hover:bg-gray-100 rounded-lg transition-colors ${compact ? 'p-1' : ''}`}
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
         </button>
         
-        <h3 className="text-base font-semibold capitalize">
+        <h3 className={`font-semibold capitalize ${compact ? 'text-sm' : 'text-base'}`}>
           {format(currentMonth, 'MMMM yyyy', { locale: es })}
         </h3>
         
         <button
           type="button"
           onClick={goToNextMonth}
-          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+          className={`p-1.5 hover:bg-gray-100 rounded-lg transition-colors ${compact ? 'p-1' : ''}`}
         >
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
         </button>
       </div>
 
       {/* Weekday headers */}
-      <div className="grid grid-cols-7 gap-0.5 mb-1.5">
+      <div className={`grid grid-cols-7 gap-0.5 ${compact ? 'mb-1' : 'mb-1.5'}`}>
         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => (
           <div
             key={day}
-            className="text-center text-xs font-medium text-gray-500 py-1"
+            className={`text-center font-medium text-gray-500 py-0.5 ${compact ? 'text-[10px]' : 'text-xs py-1'}`}
           >
             {day}
           </div>
@@ -105,7 +110,7 @@ const CalendarPicker = ({ selectedDate, onSelectDate, minDate = new Date() }) =>
       </div>
 
       {/* Calendar days */}
-      <div className="grid grid-cols-7 gap-0.5">
+      <div className={`grid grid-cols-7 ${compact ? 'gap-0.5' : 'gap-0.5'}`}>
         {days.map((day, index) => {
           const normalizedDay = startOfDay(day)
           const normalizedSelectedDate = selectedDate ? startOfDay(selectedDate) : null
@@ -125,7 +130,8 @@ const CalendarPicker = ({ selectedDate, onSelectDate, minDate = new Date() }) =>
               disabled={isDisabled || !isCurrentMonth}
               title={holidayInfo ? holidayInfo.name : ''}
               className={`
-                aspect-square p-1 text-xs rounded-md transition-colors relative
+                aspect-square rounded-md transition-colors relative
+                ${compact ? 'p-0.5 text-[11px]' : 'p-1 text-xs'}
                 ${!isCurrentMonth ? 'text-gray-300' : ''}
                 ${isSelected ? 'bg-primary-600 text-white font-semibold hover:bg-primary-700' : ''}
                 ${!isSelected && isToday && isCurrentMonth ? 'bg-primary-50 text-primary-600 font-semibold' : ''}
@@ -145,11 +151,17 @@ const CalendarPicker = ({ selectedDate, onSelectDate, minDate = new Date() }) =>
       </div>
 
       {/* Legend */}
-      <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500 space-y-0.5">
-        <p>• Fines de semana deshabilitados</p>
-        <p>• Solo fechas futuras disponibles</p>
-        <p>• <span className="text-red-400">●</span> Días festivos bloqueados (hover para ver nombre)</p>
-      </div>
+      {compact ? (
+        <p className="mt-2 border-t border-gray-100 pt-2 text-[10px] leading-snug text-gray-500">
+          Lun–Vie hábiles. Fines de semana y festivos no disponibles.
+        </p>
+      ) : (
+        <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500 space-y-0.5">
+          <p>• Fines de semana deshabilitados</p>
+          <p>• Solo fechas futuras disponibles</p>
+          <p>• <span className="text-red-400">●</span> Días festivos bloqueados (hover para ver nombre)</p>
+        </div>
+      )}
     </div>
   )
 }
