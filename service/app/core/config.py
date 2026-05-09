@@ -15,9 +15,11 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Neumoapp API"
     VERSION: str = "1.0.0"
 
-    # OpenAI-compatible API (asistente POST /chat)
-    # Nube: solo OPENAI_API_KEY + modelo OpenAI.
-    # Local (Ollama): OPENAI_BASE_URL=http://localhost:11434/v1 y OPENAI_CHAT_MODEL=llama3.2 (p. ej.)
+    # API compatible con OpenAI (asistente POST /chat): OpenAI, Ollama o Gemini (modo OpenAI-compat).
+    # OpenAI nube: solo OPENAI_API_KEY (sin OPENAI_BASE_URL).
+    # Ollama: OPENAI_BASE_URL=http://localhost:11434/v1 y OPENAI_CHAT_MODEL=llama3.2 (p. ej.)
+    # Gemini: OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+    #         OPENAI_API_KEY=<clave de Google AI Studio> y OPENAI_CHAT_MODEL=gemini-2.0-flash (p. ej.)
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_BASE_URL: Optional[str] = None
     OPENAI_CHAT_MODEL: str = "gpt-4o-mini"

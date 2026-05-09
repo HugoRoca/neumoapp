@@ -1,17 +1,23 @@
 """
-Flujo guiado (wizard) para agendar citas: Hospital → Especialidad → Consultorio → Fecha → Hora → Confirmar.
-La lógica de negocio y disponibilidad vive aquí; el frontend solo muestra botones y reenvía estado.
+Flujo guiado (wizard) para agendar citas vía chat.
+
+Alineado con la pantalla web /agendar-cita: primer hospital activo + primera especialidad de ese
+hospital (misma idea que getHospitals + getHospitalSpecialties). Si existe ese par, el usuario
+empieza en **consultorio** → fecha → hora → confirmar. Si faltan datos en BD, se vuelve al flujo
+completo Hospital → Especialidad → …
 """
 
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from app.models.patient import Patient
+from app.models.specialty import Specialty
+from app.models.hospital import Hospital
 from app.schemas.chat import WizardSelectionPayload
 from app.repositories.consultation_room_repository import ConsultationRoomRepository
 from app.repositories.hospital_repository import HospitalRepository
@@ -21,6 +27,7 @@ from app.services.scheduling_dates import (
     app_today_now,
     ensure_weekday_booking,
     parse_booking_intent,
+    parse_calendar_preferences_from_message,
     suggest_date_when_today_has_no_slots,
 )
 from app.services.slot_service import SlotService
@@ -134,6 +141,8 @@ _WIZARD_KEYS = frozenset(
         "anchor_date_iso",
         "shift_hint",
         "bumped_from_today",
+        "user_requested_date_iso",
+        "user_requested_time_hhmm",
     }
 )
 
@@ -152,6 +161,8 @@ def _empty_state() -> Dict[str, Any]:
         "anchor_date_iso": None,
         "shift_hint": "any",
         "bumped_from_today": False,
+        "user_requested_date_iso": None,
+        "user_requested_time_hhmm": None,
     }
 
 
@@ -187,6 +198,17 @@ class SchedulingWizardService:
         self.slot_service = SlotService(db)
         self.executor = ChatToolExecutor(db, patient)
 
+    def _default_hospital_and_specialty(self) -> Optional[Tuple[Hospital, Specialty]]:
+        """Igual que la web /agendar-cita: primer centro activo y primera especialidad de ese centro."""
+        hospitals = self.hospital_repo.get_all(skip=0, limit=10, active_only=True)
+        if not hospitals:
+            return None
+        h = hospitals[0]
+        specs = self.hospital_repo.get_specialties(h.id, active_only=True)
+        if not specs:
+            return None
+        return (h, specs[0])
+
     def process(
         self,
         message: str,
@@ -203,7 +225,8 @@ class SchedulingWizardService:
         if wizard_selection is not None:
             if state.get("phase") in (None, "", "idle"):
                 return (
-                    "Para empezar, escribe que quieres **agendar una cita** o usa la sugerencia «Agendar mañana».",
+                    "Para reservar por aquí, escribe algo como **quiero agendar una cita** "
+                    "o toca la sugerencia «Agendar mañana».",
                     state,
                     None,
                 )
@@ -215,23 +238,55 @@ class SchedulingWizardService:
         ):
             st = _empty_state()
             return (
-                "Salimos del agendamiento guiado. Vuelve a preguntar por tus citas y te ayudo con el listado.",
+                "Dejamos la reserva de lado un momento. Cuando quieras, pregúntame otra vez por tus citas y las vemos.",
                 st,
                 None,
             )
 
         if state.get("phase") == "idle" and _looks_like_booking_start(message):
             anchor, shift = parse_booking_intent(message, today)
-            state["phase"] = "hospital"
+            explicit_d, explicit_t = parse_calendar_preferences_from_message(message, today)
             state["shift_hint"] = shift or "any"
-            if anchor:
+            if explicit_d:
+                ed = ensure_weekday_booking(explicit_d)
+                state["user_requested_date_iso"] = ed.isoformat()
+                state["anchor_date_iso"] = ed.isoformat()
+            elif anchor:
                 state["anchor_date_iso"] = ensure_weekday_booking(anchor).isoformat()
+            if explicit_t:
+                state["user_requested_time_hhmm"] = explicit_t.strip()
+            default_pair = self._default_hospital_and_specialty()
+            if default_pair:
+                h, spec = default_pair
+                state["hospital_id"] = h.id
+                state["hospital_name"] = h.name
+                state["specialty_id"] = spec.id
+                state["specialty_name"] = spec.name
+                state["phase"] = "room"
+                lead = (
+                    f"Perfecto. En **{h.name}** la consulta sería de **{spec.name}** "
+                    "(es lo habitual en la app; no tienes que elegirlo a mano)."
+                )
+                if explicit_d and explicit_t:
+                    lead += (
+                        f" Tomo nota de la fecha **{_label_date_es(ensure_weekday_booking(explicit_d))}** "
+                        f"y la hora **{explicit_t}**; las usaré al reservar si hay cupo."
+                    )
+                elif explicit_d:
+                    lead += (
+                        f" Tomo nota de la fecha **{_label_date_es(ensure_weekday_booking(explicit_d))}**; "
+                        "la usaré al reservar si hay cupo."
+                    )
+                elif explicit_t:
+                    lead += f" Tomo nota de la hora **{explicit_t}**; la usaré al reservar si hay cupo."
+                return self._step_room(state, today, now, lead_paragraph=lead)
+            state["phase"] = "hospital"
             return self._step_hospital(state, today, now)
 
         if state.get("phase") not in (None, "idle") and _wants_exit_wizard(message):
             st = _empty_state()
             return (
-                "Listo, salimos del agendamiento guiado. ¿En qué más te ayudo?",
+                "Listo, cerramos la reserva guiada. ¿Seguimos con otra cosa?",
                 st,
                 None,
             )
@@ -249,26 +304,22 @@ class SchedulingWizardService:
         if phase == "date":
             t, st, qr = self._step_date(state, today, now)
             pre = _soft_opening_for_message(message)
-            hint = (
-                f"{pre}Cuando quieras, elige el día tocando una de las fechas de abajo.\n\n"
-            )
+            hint = f"{pre}Elige el día que te venga bien abajo (son días con hueco libre).\n\n"
             return hint + t, st, qr
         if phase == "time":
             t, st, qr = self._step_time(state, today, now)
             pre = _soft_opening_for_message(message)
-            hint = f"{pre}Elige la hora con los botones de abajo.\n\n"
+            hint = f"{pre}Toca la hora que prefieras.\n\n"
             return hint + t, st, qr
         if phase == "confirm":
             t, st, qr = self._step_confirm(state, today, now)
             pre = _soft_opening_for_message(message)
-            hint = (
-                f"{pre}Revisa el resumen y confirma abajo, o elige cambiar la hora si lo prefieres.\n\n"
-            )
+            hint = f"{pre}Échale un vistazo al resumen: si va bien, confirma; si no, puedes cambiar solo la hora.\n\n"
             return hint + t, st, qr
 
         return (
-            "Si querés seguir con la reserva, elegí una opción con los botones del mensaje anterior. "
-            "Si preferís hablar de otra cosa, escribí **salir** y seguimos por ahí.",
+            "Para seguir con la reserva, usa los botones del mensaje de arriba. "
+            "Si ya no quieres reservar, escribe **salir** y hablamos de otra cosa.",
             state,
             None,
         )
@@ -283,7 +334,7 @@ class SchedulingWizardService:
         phase = state.get("phase")
         if payload.step != phase:
             return (
-                "Este paso ya no coincide. Mira el último mensaje del asistente o escribe **salir** para reiniciar.",
+                "Esa opción ya no encaja con el paso actual. Mira el último mensaje o escribe **salir** para empezar de nuevo.",
                 state,
                 None,
             )
@@ -318,8 +369,7 @@ class SchedulingWizardService:
                 return "Ese consultorio no aplica aquí.", state, None
             state["consultation_room_id"] = match.id
             state["consultation_room_name"] = match.name
-            state["phase"] = "date"
-            return self._step_date(state, today, now)
+            return self._after_room_selection(state, today, now)
 
         if payload.step == "date" and payload.date_iso:
             try:
@@ -375,7 +425,7 @@ class SchedulingWizardService:
                 )
         t, st, qr = self._step_hospital(state, today, now)
         pre = _soft_opening_for_message(message)
-        hint = f"{pre}Para elegir el centro, toca un botón o responde con el número de la lista.\n\n"
+        hint = f"{pre}Elige el centro con un toque o con el número de la lista.\n\n"
         return hint + t, st, qr
 
     def _match_specialty_nl(self, message: str, state: Dict[str, Any], today: date, now: datetime):
@@ -404,7 +454,7 @@ class SchedulingWizardService:
                 )
         t, st, qr = self._step_specialty(state, today, now)
         pre = _soft_opening_for_message(message)
-        hint = f"{pre}Elige la especialidad con un botón o con el número de la lista.\n\n"
+        hint = f"{pre}Elige la especialidad con un toque o con el número de la lista.\n\n"
         return hint + t, st, qr
 
     def _match_room_nl(self, message: str, state: Dict[str, Any], today: date, now: datetime):
@@ -432,14 +482,14 @@ class SchedulingWizardService:
                 )
         t, st, qr = self._step_room(state, today, now)
         pre = _soft_opening_for_message(message)
-        hint = f"{pre}Elige el consultorio con un botón o con el número de la lista.\n\n"
+        hint = f"{pre}Elige consultorio con un toque o con el número o nombre de la lista.\n\n"
         return hint + t, st, qr
 
     def _step_hospital(self, state: Dict[str, Any], today: date, now: datetime):
         rows = self.hospital_repo.get_all(skip=0, limit=100, active_only=True)
-        intro = "**Paso 1 — Hospital**\n\nSelecciona el centro donde deseas atenderte."
+        intro = "¿En qué centro te gustaría la visita? Elige abajo o dime el número de la lista."
         if state.get("anchor_date_iso"):
-            intro += "\n\n(Tomaremos en cuenta tu preferencia de fecha más adelante.)"
+            intro += " (Más adelante afinamos la fecha si hace falta.)"
         opts = [
             {
                 "label": h.name,
@@ -462,7 +512,7 @@ class SchedulingWizardService:
             state["hospital_id"] = None
             state["hospital_name"] = None
             return self._step_hospital(state, today, now)
-        text = "**Paso 2 — Especialidad**\n\n¿En qué especialidad necesitas la consulta?"
+        text = "¿Qué tipo de consulta necesitas? Elige la especialidad."
         opts = [
             {
                 "label": s.name,
@@ -473,18 +523,29 @@ class SchedulingWizardService:
         qr = {"step": "specialty", "prompt": "", "options": opts}
         return text, state, qr
 
-    def _step_room(self, state: Dict[str, Any], today: date, now: datetime):
+    def _step_room(
+        self,
+        state: Dict[str, Any],
+        today: date,
+        now: datetime,
+        *,
+        lead_paragraph: Optional[str] = None,
+    ):
         hid = int(state["hospital_id"])
         sid = int(state["specialty_id"])
         rooms = self.room_repo.get_by_hospital_and_specialty(hid, sid)
         if not rooms:
             state["phase"] = "specialty"
             return (
-                "No hay consultorios para esa combinación; elige otra especialidad.",
+                "Con esa especialidad no hay consultorio disponible; prueba con otra opción.",
                 state,
                 None,
             )
-        text = "**Paso 3 — Consultorio / médico**\n\nElige el consultorio donde te atenderán."
+        ask = "¿Con qué consultorio te quedas? Puedes tocar una opción o escribir el nombre o el número."
+        if lead_paragraph:
+            text = f"{lead_paragraph}\n\n{ask}"
+        else:
+            text = ask
         opts = [
             {
                 "label": f"{r.name}" + (f" — consultorio {r.room_number}" if r.room_number else ""),
@@ -497,7 +558,10 @@ class SchedulingWizardService:
         qr = {"step": "room", "prompt": "", "options": opts}
         return text, state, qr
 
-    def _step_date(self, state: Dict[str, Any], today: date, now: datetime):
+    def _first_available_dates_for_room(
+        self, state: Dict[str, Any], today: date, now: datetime
+    ) -> Tuple[List[date], str]:
+        """Lista de fechas con hueco + nota (p. ej. bump si hoy ya no sirve). Puede mutar `anchor_date_iso`."""
         hid = int(state["hospital_id"])
         sid = int(state["specialty_id"])
         rid = int(state["consultation_room_id"])
@@ -522,8 +586,7 @@ class SchedulingWizardService:
                     state["bumped_from_today"] = True
                     start_from = nxt
                     anchor_note = (
-                        f"\n\nPara **hoy** ya no hay horarios disponibles; "
-                        f"te propongo seguir con fechas desde **{_label_date_es(nxt)}**."
+                        f"\n\nPara hoy ya no quedan huecos; seguimos a partir del **{_label_date_es(nxt)}**."
                     )
 
         dates = self.slot_service.first_available_dates_for_room(
@@ -533,15 +596,126 @@ class SchedulingWizardService:
             start_from,
             shift_hint=shift if shift != "any" else None,
         )
+        return dates, anchor_note
+
+    def _after_room_selection(
+        self, state: Dict[str, Any], today: date, now: datetime
+    ) -> Tuple[str, Dict[str, Any], Optional[Dict[str, Any]]]:
+        """
+        Tras elegir consultorio: si el primer mensaje ya traía fecha/hora y hay hueco real,
+        salta pasos redundantes (fecha y/o confirmación).
+        """
+        dates, anchor_note = self._first_available_dates_for_room(state, today, now)
         if not dates:
             return (
-                "No encontré fechas libres en los próximos días para este consultorio. "
-                "Prueba otro consultorio o especialidad (escribe **salir** para salir del flujo).",
+                "En los próximos días no vi huecos libres para ese consultorio. "
+                "Prueba otro consultorio o especialidad, o escribe **salir** si prefieres parar.",
                 state,
                 None,
             )
 
-        text = "**Paso 4 — Fecha**\n\nElige un día con disponibilidad." + anchor_note
+        req_date_iso = state.get("user_requested_date_iso")
+        req_time_raw = (state.get("user_requested_time_hhmm") or "").strip()
+
+        chosen: Optional[date] = None
+        if req_date_iso:
+            try:
+                cand = ensure_weekday_booking(date.fromisoformat(req_date_iso))
+                if cand in dates:
+                    chosen = cand
+            except (ValueError, TypeError):
+                chosen = None
+
+        if chosen is not None:
+            state["appointment_date_iso"] = chosen.isoformat()
+            hid = int(state["hospital_id"])
+            sid = int(state["specialty_id"])
+            rid = int(state["consultation_room_id"])
+            shift = state.get("shift_hint") or "any"
+            times = self.slot_service.collect_available_times_for_room(
+                hid, sid, rid, chosen, shift_hint=shift if shift != "any" else None
+            )
+            if not times:
+                state["appointment_date_iso"] = None
+                lead = (
+                    f"El **{_label_date_es(chosen)}** que comentaste sigue en agenda, "
+                    "pero ya no tiene huecos libres; elige otra fecha.\n\n"
+                )
+                state["phase"] = "date"
+                return self._step_date(state, today, now, lead_prefix=lead)
+
+            def fmt_tm(t: time) -> str:
+                return t.strftime("%H:%M")
+
+            labels = [fmt_tm(t) for t in times]
+            matched_time: Optional[str] = None
+            if req_time_raw:
+                if req_time_raw in labels:
+                    matched_time = req_time_raw
+                else:
+                    try:
+                        rt = parse_time_string(req_time_raw)
+                        for t, lbl in zip(times, labels):
+                            if t.hour == rt.hour and t.minute == rt.minute:
+                                matched_time = lbl
+                                break
+                    except ValueError:
+                        matched_time = None
+
+            if matched_time:
+                state["appointment_time_hhmm"] = matched_time
+                state["phase"] = "confirm"
+                head = (
+                    f"Vale: **{_label_date_es(chosen)}** a las **{matched_time}** encajan con lo que pediste "
+                    "y hay hueco libre — solo falta confirmar.\n\n"
+                )
+                body, st, qr = self._step_confirm(state, today, now)
+                return head + body, st, qr
+
+            state["phase"] = "time"
+            if req_time_raw:
+                head = (
+                    f"Dejé lista la fecha **{_label_date_es(chosen)}** que mencionaste. "
+                    f"La hora **{req_time_raw}** no coincide con un inicio libre; elige otra de la lista.\n\n"
+                )
+            else:
+                head = f"Dejé lista la fecha **{_label_date_es(chosen)}** que mencionaste. Elige hora:\n\n"
+            t_part, st, qr = self._step_time(state, today, now)
+            return head + t_part, st, qr
+
+        lead_miss = ""
+        if req_date_iso:
+            try:
+                missed = ensure_weekday_booking(date.fromisoformat(req_date_iso))
+                if missed not in dates:
+                    lead_miss = (
+                        f"No vi cupo el **{_label_date_es(missed)}** entre las próximas fechas con hueco; "
+                        "elige una de abajo.\n\n"
+                    )
+            except (ValueError, TypeError):
+                lead_miss = ""
+
+        state["phase"] = "date"
+        return self._step_date(state, today, now, lead_prefix=lead_miss)
+
+    def _step_date(
+        self,
+        state: Dict[str, Any],
+        today: date,
+        now: datetime,
+        *,
+        lead_prefix: str = "",
+    ):
+        dates, anchor_note = self._first_available_dates_for_room(state, today, now)
+        if not dates:
+            return (
+                "En los próximos días no vi huecos libres para ese consultorio. "
+                "Prueba otro consultorio o especialidad, o escribe **salir** si prefieres parar.",
+                state,
+                None,
+            )
+
+        text = lead_prefix + "Estos días tienen hueco libre; elige el que te encaje mejor." + anchor_note
         opts = [
             {
                 "label": _label_date_es(d),
@@ -564,16 +738,18 @@ class SchedulingWizardService:
         )
         if not times:
             state["phase"] = "date"
-            return (
-                "Ese día ya no tiene huecos para ese consultorio. Elige otra fecha.",
+            state["appointment_date_iso"] = None
+            return self._step_date(
                 state,
-                None,
+                today,
+                now,
+                lead_prefix="Ese día se llenó para ese consultorio. Elige otra fecha:\n\n",
             )
 
         def fmt(t) -> str:
             return t.strftime("%H:%M")
 
-        text = "**Paso 5 — Hora**\n\nElige la hora de inicio de tu cita."
+        text = "¿A qué hora te viene bien? (Son horarios de inicio de la cita.)"
         opts = [
             {
                 "label": fmt(t),
@@ -588,24 +764,20 @@ class SchedulingWizardService:
         d = date.fromisoformat(state["appointment_date_iso"])
         t = state["appointment_time_hhmm"]
         text = (
-            "**Resumen**\n"
-            f"- **Hospital:** {state.get('hospital_name')}\n"
-            f"- **Especialidad:** {state.get('specialty_name')}\n"
-            f"- **Consultorio:** {state.get('consultation_room_name')}\n"
-            f"- **Fecha:** {_label_date_es(d)}\n"
-            f"- **Hora:** {t}\n\n"
-            "¿Deseas confirmar la cita?"
+            f"Quedaría así: **{state.get('hospital_name')}**, **{state.get('specialty_name')}**, "
+            f"consultorio **{state.get('consultation_room_name')}**, el **{_label_date_es(d)}** "
+            f"a las **{t}**. ¿Lo confirmamos?"
         )
         qr = {
             "step": "confirm",
             "prompt": "",
             "options": [
                 {
-                    "label": "Confirmar",
+                    "label": "Sí, confirmar",
                     "payload": WizardSelectionPayload(step="confirm", confirm=True).model_dump(exclude_none=True),
                 },
                 {
-                    "label": "Cambiar hora",
+                    "label": "Prefiero otra hora",
                     "payload": WizardSelectionPayload(step="confirm", confirm=False).model_dump(exclude_none=True),
                 },
             ],
@@ -632,14 +804,14 @@ class SchedulingWizardService:
             when = apt.get("appointment_date") or state["appointment_date_iso"]
             tm = apt.get("start_time") or state["appointment_time_hhmm"]
             return (
-                f"Listo, tu cita quedó registrada para el **{when}** a las **{str(tm)[:5]}**. "
-                "¿Necesitas algo más?",
+                f"Listo: te dejé la cita el **{when}** a las **{str(tm)[:5]}**. "
+                "Si quieres, seguimos con otra cosa.",
                 st,
                 None,
             )
 
-        err = data.get("error") or "No se pudo crear la cita."
-        return f"No pude confirmar: {err}", state, None
+        err = data.get("error") or "No se pudo guardar la cita."
+        return f"No pude cerrar la reserva: {err}", state, None
 
 
 def should_run_wizard(

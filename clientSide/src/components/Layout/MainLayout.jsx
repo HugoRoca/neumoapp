@@ -22,6 +22,8 @@ const MainLayout = () => {
   const { logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  /** El chat necesita altura fija al viewport; otras rutas siguen pudiendo hacer scroll en el documento. */
+  const assistantViewportLock = location.pathname === '/asistente'
   const [mobileOpen, setMobileOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
 
@@ -114,7 +116,13 @@ const MainLayout = () => {
   )
 
   return (
-    <div className="flex min-h-[100dvh] bg-slate-100">
+    <div
+      className={
+        assistantViewportLock
+          ? 'flex h-[100dvh] max-h-[100dvh] min-h-0 w-full overflow-hidden bg-slate-100'
+          : 'flex min-h-[100dvh] bg-slate-100'
+      }
+    >
       {/* Desktop sidebar */}
       <aside
         className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-200/90 bg-gradient-to-b from-indigo-50/90 via-slate-50 to-slate-100/95 shadow-sm lg:flex"
@@ -155,7 +163,11 @@ const MainLayout = () => {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
+      <div
+        className={`flex min-h-0 min-w-0 flex-1 flex-col lg:pl-64 ${
+          assistantViewportLock ? 'overflow-hidden' : ''
+        }`}
+      >
         {/* Mobile top bar */}
         <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur-sm lg:hidden">
           <button
@@ -180,7 +192,11 @@ const MainLayout = () => {
           </button>
         </header>
 
-        <main className="min-w-0 flex-1 bg-slate-100">
+        <main
+          className={`flex min-h-0 min-w-0 flex-1 flex-col bg-slate-100 ${
+            assistantViewportLock ? 'overflow-hidden' : ''
+          }`}
+        >
           <Outlet context={{ openUserProfile: () => setProfileOpen(true) }} />
         </main>
       </div>

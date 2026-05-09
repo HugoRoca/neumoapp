@@ -19,9 +19,17 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 def _chat_llm_configured() -> bool:
-    """Nube: requiere API key. Local (Ollama): basta con OPENAI_BASE_URL."""
+    """
+    - OpenAI en la nube: solo OPENAI_API_KEY (sin OPENAI_BASE_URL).
+    - Ollama / local: OPENAI_BASE_URL apuntando a localhost (clave opcional).
+    - Gemini (OpenAI-compat): OPENAI_BASE_URL de Google + OPENAI_API_KEY (clave de AI Studio).
+    """
     if settings.OPENAI_BASE_URL:
-        return True
+        base = (settings.OPENAI_BASE_URL or "").lower()
+        local = "localhost" in base or "127.0.0.1" in base
+        if local:
+            return True
+        return bool(settings.OPENAI_API_KEY)
     return bool(settings.OPENAI_API_KEY)
 
 
@@ -61,8 +69,9 @@ def chat(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
-                "Asistente no configurado: en la nube define OPENAI_API_KEY; "
-                "con Ollama define OPENAI_BASE_URL (y OPENAI_CHAT_MODEL)."
+                "Asistente no configurado: OpenAI en la nube → OPENAI_API_KEY; "
+                "Ollama → OPENAI_BASE_URL (localhost); Gemini → OPENAI_BASE_URL de Google + OPENAI_API_KEY. "
+                "Ajusta también OPENAI_CHAT_MODEL."
             ),
         )
     try:

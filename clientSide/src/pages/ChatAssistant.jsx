@@ -16,6 +16,7 @@ import chatService from '@/services/chat.service'
 import { API_CONFIG } from '@/config/api.config'
 import { toast } from 'sonner'
 import AssistantRobot from '@/components/chat/AssistantRobot'
+import AssistantMarkdown from '@/components/chat/AssistantMarkdown'
 import HelpTipBalloon from '@/components/chat/HelpTipBalloon'
 
 function newId() {
@@ -64,9 +65,16 @@ const ChatAssistant = () => {
   /** Estado del wizard devuelto por el backend; se reenvía en cada POST hasta salir del flujo. */
   const [wizardState, setWizardState] = useState(null)
   const bottomRef = useRef(null)
+  const scrollAreaRef = useRef(null)
   const textareaRef = useRef(null)
 
+  /** Solo el panel de mensajes hace scroll; evita scrollIntoView (sube el documento y pierde la cabecera). */
   const scrollToBottom = useCallback(() => {
+    const area = scrollAreaRef.current
+    if (area) {
+      area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' })
+      return
+    }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [])
 
@@ -166,7 +174,7 @@ const ChatAssistant = () => {
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2 sm:px-5 sm:py-4 lg:px-8">
+    <div className="relative flex min-h-0 flex-1 basis-0 flex-col overflow-hidden px-3 py-2 sm:px-5 sm:py-4 lg:px-8">
       {/* Fondo decorativo */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -right-24 top-0 h-80 w-80 rounded-full bg-gradient-to-br from-primary-400/35 to-cyan-300/20 blur-3xl" />
@@ -174,11 +182,11 @@ const ChatAssistant = () => {
         <div className="absolute left-1/2 top-1/3 h-px w-[min(90%,48rem)] -translate-x-1/2 bg-gradient-to-r from-transparent via-primary-200/50 to-transparent" />
       </div>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden lg:max-w-[88rem]">
+      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 basis-0 flex-col overflow-hidden lg:max-w-[88rem]">
         {/* Panel principal */}
-        <div className="relative flex min-h-0 min-h-[70vh] flex-1 flex-col overflow-hidden rounded-3xl border border-primary-100/80 bg-white/85 shadow-xl shadow-primary-900/[0.06] ring-1 ring-white backdrop-blur-md sm:min-h-[76vh] lg:min-h-[78vh]">
-          {/* Cabecera */}
-          <header className="relative flex shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-primary-100/60 bg-gradient-to-r from-primary-50/90 via-white to-cyan-50/80 px-3 py-3 sm:px-5 sm:py-4">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-primary-100/80 bg-white/85 shadow-xl shadow-primary-900/[0.06] ring-1 ring-white backdrop-blur-md">
+          {/* Cabecera: fuera del scroll; permanece visible */}
+          <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-primary-100/60 bg-gradient-to-r from-primary-50/90 via-white to-cyan-50/80 px-3 py-3 sm:px-5 sm:py-4">
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_100%_0%,rgba(14,165,233,0.12),transparent)]" aria-hidden />
             <div className="relative flex min-w-0 items-center gap-3">
               <div className="relative flex h-11 w-11 shrink-0 items-center justify-center sm:h-12 sm:w-12">
@@ -213,8 +221,11 @@ const ChatAssistant = () => {
             </Button>
           </header>
 
-          {/* Lista de mensajes; mascota pulmón integrada al cargar y decorativa cuando hay hilo */}
-          <div className="custom-scrollbar relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-gradient-to-b from-slate-50/80 to-white/50">
+          {/* Lista de mensajes; única zona con scroll vertical */}
+          <div
+            ref={scrollAreaRef}
+            className="custom-scrollbar relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-gradient-to-b from-slate-50/80 to-white/50"
+          >
             <div
               className={`mx-auto max-w-5xl space-y-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8 ${
                 messages.length > 0 && !sending ? 'pb-16 sm:pb-20' : 'pb-6 sm:pb-8'
@@ -225,7 +236,7 @@ const ChatAssistant = () => {
                   <div className="mb-6 flex w-full max-w-4xl flex-col items-center gap-8 sm:mb-8 sm:flex-row sm:items-end sm:justify-center sm:gap-10">
                     <HelpTipBalloon
                       title="¿Por dónde empiezo?"
-                      subtitle="Elige una tarjeta abajo o escribe lo que necesitas. Las opciones de clínica aparecen en el chat cuando correspondan."
+                      subtitle="Elige una tarjeta abajo o escribe lo que necesitas. Para agendar, el flujo guiado suele empezar por consultorio (centro y especialidad ya definidos, como en Agendar cita); si hace falta elegir clínica, aparecerán botones aquí."
                     />
                     <div className="relative shrink-0">
                       <div className="absolute -inset-6 rounded-full bg-primary-400/15 blur-2xl" aria-hidden />
@@ -300,7 +311,11 @@ const ChatAssistant = () => {
                         </span>
                       )}
                       {isUser && <span className="mb-1 block text-xs font-medium text-primary-100">Tú</span>}
-                      <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                      {isUser || isErr ? (
+                        <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                      ) : (
+                        <AssistantMarkdown content={m.content} />
+                      )}
                     </div>
                     {!isUser && !isErr && m.quickReplies?.options?.length > 0 ? (
                       <div className="flex flex-col gap-1.5">
@@ -401,8 +416,8 @@ const ChatAssistant = () => {
           </div>
         </div>
 
-        {/* Composer */}
-        <div className="shrink-0 border-t border-primary-100/60 bg-gradient-to-b from-white to-primary-50/30 p-3 sm:p-4">
+        {/* Composer: fijo al pie del panel, no entra en el scroll de mensajes */}
+        <div className="relative z-10 shrink-0 border-t border-primary-100/60 bg-gradient-to-b from-white to-primary-50/30 p-3 sm:p-4">
           <form onSubmit={handleSend} className="mx-auto max-w-5xl lg:max-w-[88rem]">
             <div className="flex items-end gap-2 rounded-2xl border border-primary-200/40 bg-white p-2 shadow-lg shadow-primary-900/[0.04] ring-1 ring-primary-100/50 focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-200/80">
               <label htmlFor="chat-input" className="sr-only">
